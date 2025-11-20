@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chaos Particle Universe + Gemini AI v3.1</title>
+    <style>
+        /* --- 全局设置 --- */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* --- 全息 UI 面板容器 --- */
+        #hologram-ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 360px; /* 加宽以容纳更多控件 */
+            pointer-events: none;
+            z-index: 10;
+            max-height: 90vh; /* 防止过高 */
+            overflow-y: auto; /* 允许内容过多时滚动 */
+            scrollbar-width: none; /* 隐藏滚动条(Firefox) */
+        }
+        #hologram-ui::-webkit-scrollbar { display: none; } /* 隐藏滚动条(Chrome) */
+
+        /* 面板框架 */
+        .panel-frame {
+            background: rgba(0, 20, 40, 0.85);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-left: 4px solid rgba(0, 255, 255, 0.8);
+            padding: 15px;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.15);
+            position: relative;
+            overflow: hidden;
+            pointer-events: auto;
+            margin-bottom: 10px;
+        }
+
+        /* 扫描线动画 */
+        .panel-frame::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: rgba(0, 255, 255, 0.5);
+            animation: scan 3s linear infinite;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        @keyframes scan {
+            0% { top: 0; opacity: 0; }
+            50% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+
+        /* 文本样式 */
+        h1 {
+            color: #0ff;
+            font-size: 16px;
+            margin: 0 0 12px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px #0ff;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+            padding-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .fps-badge {
+            font-size: 12px;
+            background: rgba(0, 255, 255, 0.2);
+            padding: 2px 6px;
+            border-radius: 2px;
+        }
+
+        /* --- 交互式数据行 --- */
+        .control-section {
+            margin-bottom: 15px;
+            border-bottom: 1px dashed rgba(0,255,255,0.2);
+            padding-bottom: 10px;
+        }
+        
+        .section-title {
+            color: #0ff;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            opacity: 0.8;
+        }
+
+        .control-row {
+            margin-bottom: 8px;
+        }
+        
+        .control-header {
+            display: flex;
+            justify-content: space-between;
+            color: rgba(0, 255, 255, 0.8);
+            font-size: 10px;
+            margin-bottom: 2px;
+        }
+
+        .control-value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        /* 科幻滑块样式 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            margin: 0;
+        }
+
+        input[type=range]:focus { outline: none; }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid rgba(0, 255, 255, 0.4);
+            border-radius: 0;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            height: 12px;
+            width: 8px;
+            border: 1px solid #0ff;
+            background: #000;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -5px;
+            box-shadow: 0 0 5px #0ff;
+            transition: background 0.2s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover { background: #0ff; }
+
+        /* RGB 滑块特定颜色 */
+        .slider-red::-webkit-slider-runnable-track { background: rgba(255, 0, 0, 0.3); border-color: rgba(255,0,0,0.5); }
+        .slider-red::-webkit-slider-thumb { border-color: #f00; box-shadow: 0 0 5px #f00; }
+        
+        .slider-green::-webkit-slider-runnable-track { background: rgba(0, 255, 0, 0.3); border-color: rgba(0,255,0,0.5); }
+        .slider-green::-webkit-slider-thumb { border-color: #0f0; box-shadow: 0 0 5px #0f0; }
+
+        .slider-blue::-webkit-slider-runnable-track { background: rgba(0, 0, 255, 0.3); border-color: rgba(0,0,255,0.5); }
+        .slider-blue::-webkit-slider-thumb { border-color: #00f; box-shadow: 0 0 5px #00f; }
+
+        /* --- AI 终端样式 --- */
+        .terminal-input-group {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 5px;
+        }
+
+        #ai-input {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #0ff;
+            color: #0ff;
+            font-family: inherit;
+            font-size: 12px;
+            padding: 8px;
+            width: 100%;
+            outline: none;
+        }
+        
+        #ai-input::placeholder { color: rgba(0, 255, 255, 0.3); }
+
+        #ai-btn {
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            color: #0ff;
+            cursor: pointer;
+            font-weight: bold;
+            padding: 0 10px;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        #ai-btn:hover { background: #0ff; color: #000; box-shadow: 0 0 10px #0ff; }
+        #ai-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); }
+
+        /* AI 快捷标签 */
+        .preset-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .preset-tag {
+            font-size: 10px;
+            color: rgba(0,255,255,0.7);
+            border: 1px solid rgba(0,255,255,0.3);
+            padding: 2px 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: rgba(0,0,0,0.3);
+        }
+
+        .preset-tag:hover {
+            background: rgba(0,255,255,0.2);
+            color: #fff;
+            border-color: #0ff;
+        }
+
+        .ai-log {
+            font-size: 10px;
+            color: #0f0;
+            height: 50px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.3);
+            padding: 5px;
+            border: 1px solid rgba(0,255,0,0.2);
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+
+        .ai-log::-webkit-scrollbar { width: 4px; }
+        .ai-log::-webkit-scrollbar-track { background: #000; }
+        .ai-log::-webkit-scrollbar-thumb { background: #0ff; }
+
+        /* --- 底部控制按钮 --- */
+        #controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        .sci-fi-btn {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 10px 20px;
+            font-family: inherit;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sci-fi-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 15px #0ff;
+            text-shadow: 0 0 8px #0ff;
+        }
+
+        .sci-fi-btn.active {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 20px #0ff;
+            font-weight: bold;
+        }
+
+        .corner-decoration {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border: 1px solid #0ff;
+            transition: all 0.3s;
+        }
+        .tl { top: -1px; left: -1px; border-bottom: none; border-right: none; }
+        .tr { top: -1px; right: -1px; border-bottom: none; border-left: none; }
+        .bl { bottom: -1px; left: -1px; border-top: none; border-right: none; }
+        .br { bottom: -1px; right: -1px; border-top: none; border-left: none; }
+
+        /* 加载遮罩 */
+        #loader {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #0ff;
+            z-index: 100;
+            flex-direction: column;
+        }
+        .loader-bar {
+            width: 200px;
+            height: 2px;
+            background: #333;
+            margin-top: 10px;
+            position: relative;
+        }
+        .loader-progress {
+            position: absolute;
+            left: 0; top: 0; height: 100%;
+            background: #0ff;
+            width: 0%;
+            transition: width 0.2s;
+            box-shadow: 0 0 10px #0ff;
+        }
+    </style>
+    <!-- 引入 Three.js 和 Tween.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+</head>
+<body>
+
+    <!-- 加载动画 -->
+    <div id="loader">
+        <div>INITIALIZING CORE SYSTEMS...</div>
+        <div class="loader-bar"><div class="loader-progress" id="progress"></div></div>
+    </div>
+
+    <!-- 全息数据面板 -->
+    <div id="hologram-ui">
+        <div class="panel-frame">
+            <h1>
+                SYSTEM STATUS
+                <span class="fps-badge"><span id="fps-counter">60</span> FPS</span>
+            </h1>
+            
+            <!-- 模拟控制模块 -->
+            <div class="control-section">
+                <div class="section-title">>> SIMULATION CORE</div>
+                <div class="control-row">
+                    <div class="control-header">
+                        <span>PARTICLE DENSITY</span>
+                        <span class="control-value" id="particle-val">20,000</span>
+                    </div>
+                    <input type="range" id="particle-slider" min="5000" max="50000" step="1000" value="20000">
+                </div>
+
+                <div class="control-row">
+                    <div class="control-header">
+                        <span>TIME DILATION</span>
+                        <span class="control-value" id="speed-val">1.0x</span>
+                    </div>
+                    <input type="range" id="speed-slider" min="0" max="3" step="0.1" value="1.0">
+                </div>
+
+                <div class="control-row">
+                    <div class="control-header">
+                        <span>FIELD STABILITY</span>
+                        <span class="control-value" id="stability-val" style="color: #0f0;">100%</span>
+                    </div>
+                    <input type="range" id="stability-slider" min="0" max="100" step="1" value="100">
+                </div>
+            </div>
+
+            <!-- 外观控制模块 (新) -->
+            <div class="control-section">
+                <div class="section-title">>> PARTICLE APPEARANCE</div>
+                
+                <div class="control-row">
+                    <div class="control-header">
+                        <span>PARTICLE SIZE</span>
+                        <span class="control-value" id="size-val">6.0</span>
+                    </div>
+                    <input type="range" id="size-slider" min="1" max="20" step="0.1" value="6.0">
+                </div>
+
+                <!-- RGB 调色板 -->
+                <div class="control-row">
+                    <div class="control-header">
+                        <span>SPECTRAL FILTER (RGB)</span>
+                        <span class="control-value" id="rgb-val">255, 255, 255</span>
+                    </div>
+                    <!-- R -->
+                    <input type="range" class="slider-red" id="slider-r" min="0" max="255" value="255" style="margin-bottom: 4px;">
+                    <!-- G -->
+                    <input type="range" class="slider-green" id="slider-g" min="0" max="255" value="255" style="margin-bottom: 4px;">
+                    <!-- B -->
+                    <input type="range" class="slider-blue" id="slider-b" min="0" max="255" value="255">
+                </div>
+            </div>
+            
+            <!-- AI 终端区域 (升级) -->
+            <div class="control-section" style="border:none; margin-bottom:0;">
+                <div class="section-title">>> DIMENSIONAL RECONSTRUCTOR</div>
+                <div class="terminal-input-group">
+                    <input type="text" id="ai-input" placeholder="Input shape or select preset..." onkeydown="if(event.key==='Enter') triggerAI()">
+                    <button id="ai-btn" onclick="triggerAI()">✨</button>
+                </div>
+                
+                <!-- 快捷预设 -->
+                <div class="preset-tags">
+                    <div class="preset-tag" onclick="usePreset('Spiral Galaxy')">Galaxy</div>
+                    <div class="preset-tag" onclick="usePreset('DNA Double Helix')">DNA</div>
+                    <div class="preset-tag" onclick="usePreset('Tornado Storm')">Tornado</div>
+                    <div class="preset-tag" onclick="usePreset('Pyramid Grid')">Pyramid</div>
+                    <div class="preset-tag" onclick="usePreset('Atomic Structure')">Atom</div>
+                    <div class="preset-tag" onclick="usePreset('Cube Matrix')">Matrix</div>
+                </div>
+
+                <div class="ai-log" id="ai-log">
+                    [SYSTEM] Quantum field ready.
+                    [INFO] Use sliders to tint particle spectrum.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部形状切换 -->
+    <div id="controls">
+        <button class="sci-fi-btn active" onclick="transformTo('universe')">
+            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
+            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
+            Universe
+        </button>
+        <button class="sci-fi-btn" onclick="transformTo('heart')">
+            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
+            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
+            Heart
+        </button>
+        <button class="sci-fi-btn" onclick="transformTo('mobius')">
+            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
+            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
+            Möbius
+        </button>
+        <button class="sci-fi-btn" onclick="transformTo('fractal')">
+            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
+            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
+            Fractal
+        </button>
+        <button class="sci-fi-btn" onclick="transformTo('penrose')">
+            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
+            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
+            Penrose
+        </button>
+    </div>
+
+    <script>
+        // --- API 设置 ---
+        const apiKey = ""; 
+
+        // --- 变量声明 ---
+        let scene, camera, renderer;
+        let particles, geometry, material;
+        let particleCount = 20000;
+        
+        // 控制变量
+        let simSpeed = 1.0;
+        let stability = 1.0;
+        let particleSize = 6.0;
+        
+        // 颜色控制
+        let colorR = 1, colorG = 1, colorB = 1; // 0-1 normalized
+
+        let currentShape = 'universe';
+        let customShapeCode = null;
+        
+        // 动画相关
+        const transitionParams = { val: 1 };
+        let currentTween = null;
+
+        // 性能监控
+        let lastTime = performance.now();
+        let frames = 0;
+        const fpsCounter = document.getElementById('fps-counter');
+
+        // 鼠标交互
+        let mouseX = 0;
+        let mouseY = 0;
+        let windowHalfX = window.innerWidth / 2;
+        let windowHalfY = window.innerHeight / 2;
+
+        init();
+        setupUIControls();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x000000, 0.001);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 4000);
+            camera.position.z = 1000;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.autoClearColor = false;
+            document.body.appendChild(renderer.domElement);
+
+            initParticles(particleCount);
+
+            document.addEventListener('mousemove', onDocumentMouseMove, false);
+            window.addEventListener('resize', onWindowResize, false);
+
+            setTimeout(() => {
+                document.getElementById('progress').style.width = "100%";
+                setTimeout(() => {
+                    document.getElementById('loader').style.opacity = 0;
+                    setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+                }, 300);
+            }, 500);
+        }
+
+        function initParticles(count) {
+            if (particles) {
+                scene.remove(particles);
+                geometry.dispose();
+            }
+
+            particleCount = count;
+            const sprite = generateSprite();
+
+            geometry = new THREE.BufferGeometry();
+            material = new THREE.PointsMaterial({
+                size: particleSize, // 使用当前大小变量
+                map: sprite,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            // 初始化颜色滤镜
+            material.color.setRGB(colorR, colorG, colorB);
+
+            // 重新计算位置
+            let posData;
+            if (currentShape === 'custom' && customShapeCode) {
+                posData = generateCustomPositions(customShapeCode);
+            } else {
+                switch(currentShape) {
+                    case 'heart': posData = getHeartLayout(); break;
+                    case 'mobius': posData = getMobiusLayout(); break;
+                    case 'fractal': posData = getFractalLayout(); break;
+                    case 'penrose': posData = getPenroseLayout(); break;
+                    default: posData = getUniverseLayout(); break;
+                }
+            }
+
+            const initialColors = getColors(currentShape === 'custom' ? 'ai' : currentShape);
+
+            const posArray = new Float32Array(particleCount * 3);
+            const colArray = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                posArray[i * 3] = posData[i * 3];
+                posArray[i * 3 + 1] = posData[i * 3 + 1];
+                posArray[i * 3 + 2] = posData[i * 3 + 2];
+
+                colArray[i * 3] = initialColors[i * 3];
+                colArray[i * 3 + 1] = initialColors[i * 3 + 1];
+                colArray[i * 3 + 2] = initialColors[i * 3 + 2];
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colArray, 3));
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+        }
+
+        function setupUIControls() {
+            // 1. 粒子数量
+            const pSlider = document.getElementById('particle-slider');
+            const pVal = document.getElementById('particle-val');
+            pSlider.addEventListener('change', (e) => {
+                const val = parseInt(e.target.value);
+                pVal.innerText = val.toLocaleString();
+                initParticles(val);
+                logSystem(`Re-materializing: ${val} units.`);
+            });
+            pSlider.addEventListener('input', (e) => {
+                pVal.innerText = parseInt(e.target.value).toLocaleString();
+            });
+
+            // 2. 速度
+            const sSlider = document.getElementById('speed-slider');
+            const sVal = document.getElementById('speed-val');
+            sSlider.addEventListener('input', (e) => {
+                simSpeed = parseFloat(e.target.value);
+                sVal.innerText = simSpeed.toFixed(1) + "x";
+            });
+
+            // 3. 稳定性
+            const stSlider = document.getElementById('stability-slider');
+            const stVal = document.getElementById('stability-val');
+            stSlider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                stability = val / 100;
+                stVal.innerText = val + "%";
+                if (val > 80) stVal.style.color = "#0f0";
+                else if (val > 40) stVal.style.color = "#ff0";
+                else stVal.style.color = "#f00";
+            });
+            
+            // 4. 粒子大小 (新)
+            const sizeSlider = document.getElementById('size-slider');
+            const sizeVal = document.getElementById('size-val');
+            sizeSlider.addEventListener('input', (e) => {
+                particleSize = parseFloat(e.target.value);
+                sizeVal.innerText = particleSize.toFixed(1);
+                if(material) material.size = particleSize;
+            });
+
+            // 5. RGB 调色 (新)
+            const rSlider = document.getElementById('slider-r');
+            const gSlider = document.getElementById('slider-g');
+            const bSlider = document.getElementById('slider-b');
+            const rgbVal = document.getElementById('rgb-val');
+
+            function updateColor() {
+                const r = parseInt(rSlider.value);
+                const g = parseInt(gSlider.value);
+                const b = parseInt(bSlider.value);
+                rgbVal.innerText = `${r}, ${g}, ${b}`;
+                
+                colorR = r / 255;
+                colorG = g / 255;
+                colorB = b / 255;
+                
+                // 直接更新材质颜色，实现全局滤镜效果
+                if(material) {
+                    material.color.setRGB(colorR, colorG, colorB);
+                }
+            }
+
+            rSlider.addEventListener('input', updateColor);
+            gSlider.addEventListener('input', updateColor);
+            bSlider.addEventListener('input', updateColor);
+        }
+
+        function logSystem(msg) {
+            const log = document.getElementById('ai-log');
+            log.innerHTML += `\n[SYS] ${msg}`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // --- AI 功能模块 ---
+
+        // 预设点击处理
+        function usePreset(name) {
+            document.getElementById('ai-input').value = name;
+            triggerAI();
+        }
+
+        async function triggerAI() {
+            const input = document.getElementById('ai-input');
+            const btn = document.getElementById('ai-btn');
+            const log = document.getElementById('ai-log');
+            const prompt = input.value.trim();
+
+            if (!prompt) return;
+
+            input.disabled = true;
+            btn.disabled = true;
+            log.innerHTML += `\n>> ANALYZING: "${prompt}"...`;
+            log.scrollTop = log.scrollHeight;
+
+            try {
+                const systemPrompt = `
+                    You are a 3D Particle Architect AI.
+                    Your goal is to write the BODY of a JavaScript function that calculates the x, y, z coordinates for a single particle based on its index.
+                    
+                    Input: "${prompt}"
+                    
+                    Context:
+                    - Variable 'i': current particle index (0 to ${particleCount-1}).
+                    - Variable 'count': total particles (${particleCount}).
+                    - Variable 'Math': standard JS Math object.
+                    - Target Scale: Coordinates should generally be within -800 to 800.
+                    
+                    Output Format:
+                    Return ONLY the raw JavaScript code for the function body. Do not use markdown. Do not include 'function() {}'.
+                    The code must end with: return { x: ..., y: ..., z: ... };
+                    
+                    Example Response:
+                    const angle = i * 0.1; const r = 500; return { x: Math.cos(angle)*r, y: Math.sin(angle)*r, z: (i - count/2) * 0.1 };
+                `;
+
+                const result = await callGemini(systemPrompt);
+                const code = result.trim().replace(/```javascript|```/g, ""); 
+
+                log.innerHTML += `\n>> GENERATING GEOMETRY...`;
+                log.scrollTop = log.scrollHeight;
+
+                customShapeCode = code;
+                const newPos = generateCustomPositions(code);
+                transformToCustom(newPos, prompt.toUpperCase());
+                generateLore(prompt);
+
+            } catch (error) {
+                console.error(error);
+                log.innerHTML += `\n[ERROR] QUANTUM CALCULATION FAILED.`;
+            } finally {
+                input.disabled = false;
+                btn.disabled = false;
+                input.value = '';
+                input.focus();
+            }
+        }
+
+        function generateCustomPositions(code) {
+            const particleFunction = new Function('i', 'count', code);
+            const newPos = [];
+            for (let i = 0; i < particleCount; i++) {
+                try {
+                    const p = particleFunction(i, particleCount);
+                    newPos.push(p.x || 0, p.y || 0, p.z || 0);
+                } catch (e) {
+                    newPos.push(0,0,0);
+                }
+            }
+            return newPos;
+        }
+
+        async function generateLore(shapeName) {
+            const log = document.getElementById('ai-log');
+            try {
+                const prompt = `
+                    You are the AI of a sci-fi spaceship. The chaos matter outside has just formed a shape: "${shapeName}".
+                    Write a 1-sentence system status report (max 15 words).
+                    Style: Technobabble, analytical, slightly alarmed or impressed.
+                `;
+                const text = await callGemini(prompt);
+                log.innerHTML += `\n[SYS] ${text}`;
+                log.scrollTop = log.scrollHeight;
+            } catch (e) {}
+        }
+
+        async function callGemini(text) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            // 指数退避重试逻辑 (Exponential Backoff)
+            // 重试5次，延迟分别为 1s, 2s, 4s, 8s, 16s
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: text }] }]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        // 抛出错误以便被 catch 捕获并重试
+                        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    return data.candidates[0].content.parts[0].text;
+
+                } catch (error) {
+                    if (i === 4) throw error; // 如果是最后一次尝试失败，则抛出错误
+                    
+                    // 等待一段时间后重试
+                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+                }
+            }
+        }
+
+        // --- 图形生成算法 ---
+
+        function getUniverseLayout() {
+            const arr = [];
+            for (let i = 0; i < particleCount; i++) {
+                const r = 800 + Math.random() * 800;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                arr.push(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
+            }
+            return arr;
+        }
+
+        function getHeartLayout() {
+            const arr = [];
+            for (let i = 0; i < particleCount; i++) {
+                const t = Math.random() * Math.PI * 2;
+                let x = 16 * Math.pow(Math.sin(t), 3);
+                let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+                let z = (Math.random() - 0.5) * 10; 
+                const scale = 25; 
+                const r = scale * (Math.random() * 0.2 + 0.8);
+                arr.push(x * r, y * r, z * scale * 4 * Math.random()); 
+            }
+            return arr;
+        }
+
+        function getMobiusLayout() {
+            const arr = [];
+            for (let i = 0; i < particleCount; i++) {
+                const u = Math.random() * Math.PI * 2;
+                const v = (Math.random() * 2) - 1;
+                const radius = 350;
+                const stripWidth = 150;
+                arr.push(
+                    (radius + v * stripWidth / 2 * Math.cos(u / 2)) * Math.cos(u),
+                    (radius + v * stripWidth / 2 * Math.cos(u / 2)) * Math.sin(u),
+                    v * stripWidth / 2 * Math.sin(u / 2)
+                );
+            }
+            return arr;
+        }
+
+        function getFractalLayout() {
+            const arr = [];
+            const size = 600;
+            const v = [{x: size, y: size, z: size}, {x: -size, y: -size, z: size}, {x: -size, y: size, z: -size}, {x: size, y: -size, z: -size}];
+            let currentP = {x: 0, y: 0, z: 0};
+            for (let i = 0; i < particleCount; i++) {
+                const targetV = v[Math.floor(Math.random() * 4)];
+                currentP.x = (currentP.x + targetV.x) / 2;
+                currentP.y = (currentP.y + targetV.y) / 2;
+                currentP.z = (currentP.z + targetV.z) / 2;
+                if (i > 20) arr.push(currentP.x, currentP.y, currentP.z);
+                else arr.push(0,0,0);
+            }
+            return arr;
+        }
+
+        function getPenroseLayout() {
+            const arr = [];
+            for (let i = 0; i < particleCount; i++) {
+                const u = (i / particleCount) * 20 * Math.PI;
+                const radius = i / particleCount * 500;
+                arr.push(radius * Math.cos(u), radius * Math.sin(u) - 200, i / particleCount * 600 - 300);
+            }
+            return arr;
+        }
+
+        // --- 颜色生成 ---
+        function getColors(type) {
+            const arr = [];
+            const c = new THREE.Color();
+            for (let i = 0; i < particleCount; i++) {
+                if (type === 'universe') c.setHSL(0.6 + Math.random() * 0.1, 0.8, 0.6);
+                else if (type === 'heart') c.setHSL(0.95 + Math.random() * 0.1, 0.9, 0.5);
+                else if (type === 'mobius') c.setHSL(0.5 + Math.random() * 0.2, 0.8, 0.5);
+                else if (type === 'fractal') c.setHSL(0.1 + Math.random() * 0.1, 1.0, 0.6);
+                else if (type === 'penrose') c.setHSL(0.75 + Math.random() * 0.2, 0.5, 0.8);
+                else c.setHSL(Math.random(), 0.8, 0.6); 
+                arr.push(c.r, c.g, c.b);
+            }
+            return arr;
+        }
+
+        // --- 变换逻辑 ---
+        function transformTo(shape) {
+            if (currentShape === shape) return;
+            document.getElementById('ai-input').value = "";
+            customShapeCode = null; 
+            
+            let nextPos;
+            switch (shape) {
+                case 'universe': nextPos = getUniverseLayout(); break;
+                case 'heart': nextPos = getHeartLayout(); break;
+                case 'mobius': nextPos = getMobiusLayout(); break;
+                case 'fractal': nextPos = getFractalLayout(); break;
+                case 'penrose': nextPos = getPenroseLayout(); break;
+                default: return;
+            }
+            
+            const logs = {
+                'universe': "Resetting entropy to cosmic background levels.",
+                'heart': "Bio-digital rhythm detected. Synchronizing...",
+                'mobius': "Topological loop initiated. Infinite regression.",
+                'fractal': "Recursive geometry loaded. Self-similarity: 100%.",
+                'penrose': "Non-euclidean geometry detected. Reality distortion active."
+            };
+            logSystem(logs[shape]);
+
+            executeTransition(nextPos, shape, getColors(shape));
+        }
+
+        function transformToCustom(posArray, name) {
+            executeTransition(posArray, 'custom', getColors('ai'));
+            document.querySelectorAll('.sci-fi-btn').forEach(btn => btn.classList.remove('active'));
+        }
+
+        function executeTransition(nextPos, shapeName, nextColors) {
+            currentShape = shapeName;
+            if(shapeName !== 'custom') {
+                document.querySelectorAll('.sci-fi-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                    if(btn.innerText.toLowerCase().includes(shapeName)) btn.classList.add('active');
+                });
+            }
+
+            if (currentTween) currentTween.stop();
+
+            const startPositions = Float32Array.from(geometry.attributes.position.array);
+            const startColors = Float32Array.from(geometry.attributes.color.array);
+
+            transitionParams.val = 0;
+
+            currentTween = new TWEEN.Tween(transitionParams)
+                .to({ val: 1 }, 2000)
+                .easing(TWEEN.Easing.Exponential.InOut)
+                .onUpdate(() => {
+                    const alpha = transitionParams.val;
+                    const posAttr = geometry.attributes.position;
+                    const colAttr = geometry.attributes.color;
+
+                    const count = Math.min(particleCount, posAttr.count);
+
+                    for (let i = 0; i < count; i++) {
+                        const idx = i * 3;
+                        posAttr.array[idx] = startPositions[idx] + (nextPos[idx] - startPositions[idx]) * alpha;
+                        posAttr.array[idx+1] = startPositions[idx+1] + (nextPos[idx+1] - startPositions[idx+1]) * alpha;
+                        posAttr.array[idx+2] = startPositions[idx+2] + (nextPos[idx+2] - startPositions[idx+2]) * alpha;
+
+                        colAttr.array[idx] = startColors[idx] + (nextColors[idx] - startColors[idx]) * alpha;
+                        colAttr.array[idx+1] = startColors[idx+1] + (nextColors[idx+1] - startColors[idx+1]) * alpha;
+                        colAttr.array[idx+2] = startColors[idx+2] + (nextColors[idx+2] - startColors[idx+2]) * alpha;
+                    }
+                    
+                    posAttr.needsUpdate = true;
+                    colAttr.needsUpdate = true;
+                })
+                .start();
+        }
+
+        // --- 渲染 ---
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const time = performance.now();
+            frames++;
+            if (time >= lastTime + 1000) {
+                fpsCounter.innerText = Math.round((frames * 1000) / (time - lastTime));
+                lastTime = time;
+                frames = 0;
+            }
+
+            TWEEN.update();
+
+            const rotationSpeed = 0.001 * simSpeed;
+            let chaosMultiplier = (1.0 - stability) * 5;
+
+            particles.rotation.y += rotationSpeed * (1 + chaosMultiplier * Math.random());
+            particles.rotation.z += rotationSpeed * 0.2 * (1 - chaosMultiplier * Math.random());
+
+            if (stability < 0.95) {
+                const shakeIntensity = (1.0 - stability) * 10;
+                camera.position.x += (Math.random() - 0.5) * shakeIntensity;
+                camera.position.y += (Math.random() - 0.5) * shakeIntensity;
+            }
+
+            camera.position.x += (mouseX - camera.position.x) * 0.05 * simSpeed;
+            camera.position.y += (-mouseY - camera.position.y) * 0.05 * simSpeed;
+            camera.lookAt(scene.position);
+
+            renderer.autoClearColor = false;
+            renderer.clear(); 
+            renderer.render(scene, camera);
+        }
+
+        function onDocumentMouseMove(event) {
+            mouseX = (event.clientX - windowHalfX) * 1;
+            mouseY = (event.clientY - windowHalfY) * 1;
+        }
+
+        function onWindowResize() {
+            windowHalfX = window.innerWidth / 2;
+            windowHalfY = window.innerHeight / 2;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function generateSprite() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.2, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(0.5, 'rgba(255,255,255,0.2)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 32, 32);
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        }
+        
+        window.transformTo = transformTo;
+        window.triggerAI = triggerAI;
+        window.usePreset = usePreset;
+    </script>
+</body>
+</html>
