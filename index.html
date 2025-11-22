@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chaos Particle Universe + Gemini AI v3.1</title>
+    <title>Chaos Particle Universe + Local Procedural Core</title>
     <style>
         /* --- 全局设置 --- */
         body {
@@ -110,6 +110,7 @@
         .control-header {
             display: flex;
             justify-content: space-between;
+            align-items: center; /* 垂直居中 */
             color: rgba(0, 255, 255, 0.8);
             font-size: 10px;
             margin-bottom: 2px;
@@ -118,6 +119,28 @@
         .control-value {
             color: #fff;
             font-weight: bold;
+        }
+
+        /* 刷新按钮样式 */
+        .refresh-btn {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #0ff;
+            color: #0ff;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 10px;
+            margin-left: 6px;
+            transition: all 0.2s;
+        }
+        .refresh-btn:hover {
+            background: #0ff;
+            color: #000;
+            transform: rotate(180deg);
         }
 
         /* 科幻滑块样式 */
@@ -327,7 +350,7 @@
         <div>INITIALIZING CORE SYSTEMS...</div>
         <div class="loader-bar"><div class="loader-progress" id="progress"></div></div>
     </div>
-
+    
     <!-- 全息数据面板 -->
     <div id="hologram-ui">
         <div class="panel-frame">
@@ -389,13 +412,34 @@
                     <!-- B -->
                     <input type="range" class="slider-blue" id="slider-b" min="0" max="255" value="255">
                 </div>
+
+                <!-- 神经树连线 (更新：带刷新按钮) -->
+                <div class="control-row">
+                    <div class="control-header">
+                        <span>NEURAL DENSITY (LINES)</span>
+                        <div style="display:flex; align-items:center;">
+                            <span class="control-value" id="neural-val" style="margin-right:5px;">0%</span>
+                            <div class="refresh-btn" id="btn-refresh-lines" title="Randomize Connections">↻</div>
+                        </div>
+                    </div>
+                    <input type="range" id="neural-slider" min="0" max="100" step="1" value="0">
+                </div>
+
+                <!-- 形状变形 -->
+                <div class="control-row">
+                    <div class="control-header">
+                        <span>SHAPE MORPH</span>
+                        <span class="control-value" id="shape-val">Glow</span>
+                    </div>
+                    <input type="range" id="shape-slider" min="0" max="3" step="0.01" value="0">
+                </div>
             </div>
             
-            <!-- AI 终端区域 (升级) -->
+            <!-- AI 终端区域 (本地过程化生成) -->
             <div class="control-section" style="border:none; margin-bottom:0;">
                 <div class="section-title">>> DIMENSIONAL RECONSTRUCTOR</div>
                 <div class="terminal-input-group">
-                    <input type="text" id="ai-input" placeholder="Input shape or select preset..." onkeydown="if(event.key==='Enter') triggerAI()">
+                    <input type="text" id="ai-input" placeholder="Input shape (e.g. Galaxy, Cube)..." onkeydown="if(event.key==='Enter') triggerAI()">
                     <button id="ai-btn" onclick="triggerAI()">✨</button>
                 </div>
                 
@@ -447,18 +491,20 @@
     </div>
 
     <script>
-        // --- API 设置 ---
-        const apiKey = ""; 
-
         // --- 变量声明 ---
         let scene, camera, renderer;
         let particles, geometry, material;
+        let linesMesh, linesGeometry; // 连线网格
         let particleCount = 20000;
+        const maxLines = 10000; // 增加最大连线数以支持“满连接”
         
         // 控制变量
         let simSpeed = 1.0;
         let stability = 1.0;
         let particleSize = 6.0;
+        let neuralDensity = 0; // 0-100
+        let shapeMorph = 0.0; // 0.0-3.0
+        let lineSeed = 0; // 连线随机种子
         
         // 颜色控制
         let colorR = 1, colorG = 1, colorB = 1; // 0-1 normalized
@@ -480,6 +526,61 @@
         let mouseY = 0;
         let windowHalfX = window.innerWidth / 2;
         let windowHalfY = window.innerHeight / 2;
+        
+        // 辅助随机函数
+        const rand = (min, max) => Math.random() * (max - min) + min;
+
+        // 着色器代码 (实现形状平滑变形)
+        const vertexShader = `
+            uniform float size;
+            varying vec3 vColor;
+            void main() {
+                vColor = color;
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                // 根据距离调整大小
+                gl_PointSize = size * (300.0 / -mvPosition.z);
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float uShape; // 0.0 - 3.0
+            uniform vec3 uColorTint;
+            varying vec3 vColor;
+
+            void main() {
+                vec2 uv = gl_PointCoord;
+                vec3 finalColor = vColor * uColorTint;
+                
+                // Shape 0: Soft Glow (Gaussian-ish)
+                float d = length(uv - 0.5);
+                float s0 = exp(-d * d * 8.0); 
+
+                // Shape 1: Diamond / Star-like
+                vec2 p = abs(uv - 0.5);
+                float s1 = smoothstep(0.4, 0.3, p.x + p.y);
+
+                // Shape 2: Square
+                float s2 = smoothstep(0.4, 0.3, max(p.x, p.y));
+
+                // Shape 3: Ring / Donut
+                float s3 = smoothstep(0.3, 0.35, d) * smoothstep(0.5, 0.4, d);
+
+                float alpha = 0.0;
+
+                // Mix shapes based on uShape
+                if (uShape < 1.0) {
+                    alpha = mix(s0, s1, uShape);
+                } else if (uShape < 2.0) {
+                    alpha = mix(s1, s2, uShape - 1.0);
+                } else {
+                    alpha = mix(s2, s3, uShape - 2.0);
+                }
+
+                if (alpha < 0.01) discard;
+                gl_FragColor = vec4(finalColor, alpha);
+            }
+        `;
 
         init();
         setupUIControls();
@@ -499,6 +600,7 @@
             document.body.appendChild(renderer.domElement);
 
             initParticles(particleCount);
+            initLines(); // 初始化连线系统
 
             document.addEventListener('mousemove', onDocumentMouseMove, false);
             window.addEventListener('resize', onWindowResize, false);
@@ -507,7 +609,9 @@
                 document.getElementById('progress').style.width = "100%";
                 setTimeout(() => {
                     document.getElementById('loader').style.opacity = 0;
-                    setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+                    setTimeout(() => {
+                        document.getElementById('loader').style.display = 'none';
+                    }, 500);
                 }, 300);
             }, 500);
         }
@@ -519,26 +623,28 @@
             }
 
             particleCount = count;
-            const sprite = generateSprite();
 
             geometry = new THREE.BufferGeometry();
-            material = new THREE.PointsMaterial({
-                size: particleSize, // 使用当前大小变量
-                map: sprite,
-                vertexColors: true,
+            
+            // 使用 ShaderMaterial 替换原来的 PointsMaterial
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    size: { value: particleSize },
+                    uShape: { value: shapeMorph },
+                    uColorTint: { value: new THREE.Color(colorR, colorG, colorB) }
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
                 transparent: true,
-                opacity: 0.8
+                vertexColors: true
             });
-            
-            // 初始化颜色滤镜
-            material.color.setRGB(colorR, colorG, colorB);
 
             // 重新计算位置
             let posData;
-            if (currentShape === 'custom' && customShapeCode) {
-                posData = generateCustomPositions(customShapeCode);
+            if (currentShape === 'custom') {
+                posData = getUniverseLayout(); 
             } else {
                 switch(currentShape) {
                     case 'heart': posData = getHeartLayout(); break;
@@ -548,7 +654,7 @@
                     default: posData = getUniverseLayout(); break;
                 }
             }
-
+            
             const initialColors = getColors(currentShape === 'custom' ? 'ai' : currentShape);
 
             const posArray = new Float32Array(particleCount * 3);
@@ -569,6 +675,94 @@
 
             particles = new THREE.Points(geometry, material);
             scene.add(particles);
+        }
+
+        function initLines() {
+            linesGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(maxLines * 2 * 3); // 2 points per line, 3 coords
+            linesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const linesMaterial = new THREE.LineBasicMaterial({
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0.15, // 淡淡的神经线
+                blending: THREE.AdditiveBlending
+            });
+
+            linesMesh = new THREE.LineSegments(linesGeometry, linesMaterial);
+            linesMesh.frustumCulled = false; // 总是渲染，避免闪烁
+            scene.add(linesMesh);
+        }
+
+        function updateLines() {
+            if (!linesMesh || !particles) return;
+            
+            // 0% -> 0 lines, 100% -> maxLines
+            const activeLines = Math.floor(maxLines * (neuralDensity / 100));
+            const positions = linesGeometry.attributes.position.array;
+            const particlePositions = particles.geometry.attributes.position.array;
+            
+            // 将不活动的线段隐藏 (设为 0,0,0)
+            for (let i = activeLines * 6; i < maxLines * 6; i++) {
+                positions[i] = 0;
+            }
+            
+            if (activeLines === 0) {
+                linesGeometry.attributes.position.needsUpdate = true;
+                return;
+            }
+            
+            let lineIndex = 0;
+            // 步长根据密度动态调整，以确保连线分布均匀，而不是全堆在数组前面
+            const step = Math.max(1, Math.floor(particleCount / (activeLines + 1))); 
+            
+            // 外层循环遍历粒子，试图发起连接
+            for (let k = 0; k < particleCount && lineIndex < activeLines; k += step) {
+                // 使用 lineSeed 改变起始位置，从而改变连接结构
+                let i = (k + lineSeed) % particleCount;
+                
+                const idx1 = i * 3;
+                const x1 = particlePositions[idx1];
+                const y1 = particlePositions[idx1+1];
+                const z1 = particlePositions[idx1+2];
+
+                // 尝试连接数组中附近的点 (形成结构感)
+                for(let j = 1; j <= 3; j++) {
+                    if (lineIndex >= activeLines) break;
+
+                    // 目标点也受到 Seed 影响，产生更多变化
+                    const targetIdx = (i + j) % particleCount;
+                    const idx2 = targetIdx * 3;
+                    const x2 = particlePositions[idx2];
+                    const y2 = particlePositions[idx2+1];
+                    const z2 = particlePositions[idx2+2];
+
+                    // 计算距离
+                    const dx = x2 - x1;
+                    const dy = y2 - y1;
+                    const dz = z2 - z1;
+                    const distSq = dx*dx + dy*dy + dz*dz;
+
+                    // 阈值：随着密度增加，允许连接更远的点
+                    const threshold = 3000 + neuralDensity * 50; 
+
+                    if (distSq < threshold) {
+                        const lPos = lineIndex * 6;
+                        positions[lPos] = x1;
+                        positions[lPos+1] = y1;
+                        positions[lPos+2] = z1;
+                        
+                        positions[lPos+3] = x2;
+                        positions[lPos+4] = y2;
+                        positions[lPos+5] = z2;
+                        
+                        lineIndex++;
+                    }
+                }
+            }
+            
+            linesGeometry.attributes.position.needsUpdate = true;
+            linesMesh.rotation.copy(particles.rotation);
         }
 
         function setupUIControls() {
@@ -605,16 +799,16 @@
                 else stVal.style.color = "#f00";
             });
             
-            // 4. 粒子大小 (新)
+            // 4. 粒子大小
             const sizeSlider = document.getElementById('size-slider');
             const sizeVal = document.getElementById('size-val');
             sizeSlider.addEventListener('input', (e) => {
                 particleSize = parseFloat(e.target.value);
                 sizeVal.innerText = particleSize.toFixed(1);
-                if(material) material.size = particleSize;
+                if(material) material.uniforms.size.value = particleSize; // Update uniform
             });
 
-            // 5. RGB 调色 (新)
+            // 5. RGB 调色
             const rSlider = document.getElementById('slider-r');
             const gSlider = document.getElementById('slider-g');
             const bSlider = document.getElementById('slider-b');
@@ -630,15 +824,48 @@
                 colorG = g / 255;
                 colorB = b / 255;
                 
-                // 直接更新材质颜色，实现全局滤镜效果
                 if(material) {
-                    material.color.setRGB(colorR, colorG, colorB);
+                    material.uniforms.uColorTint.value.setRGB(colorR, colorG, colorB);
+                }
+                if(linesMesh) {
+                    linesMesh.material.color.setRGB(colorR, colorG * 1.2, colorB * 1.5); // 线条颜色略微不同
                 }
             }
 
             rSlider.addEventListener('input', updateColor);
             gSlider.addEventListener('input', updateColor);
             bSlider.addEventListener('input', updateColor);
+
+            // 6. 神经树密度 & 刷新
+            const neuralSlider = document.getElementById('neural-slider');
+            const neuralVal = document.getElementById('neural-val');
+            const refreshBtn = document.getElementById('btn-refresh-lines');
+
+            neuralSlider.addEventListener('input', (e) => {
+                neuralDensity = parseInt(e.target.value);
+                neuralVal.innerText = neuralDensity + "%";
+            });
+
+            refreshBtn.addEventListener('click', () => {
+                // 随机一个新的偏移种子
+                lineSeed = Math.floor(Math.random() * particleCount);
+                updateLines(); // 强制更新
+            });
+
+            // 7. 形状变形
+            const shapeSlider = document.getElementById('shape-slider');
+            const shapeVal = document.getElementById('shape-val');
+            shapeSlider.addEventListener('input', (e) => {
+                shapeMorph = parseFloat(e.target.value);
+                if(material) material.uniforms.uShape.value = shapeMorph;
+
+                // 更新显示文本
+                let txt = "Glow";
+                if (shapeMorph > 0.5 && shapeMorph <= 1.5) txt = "Diamond";
+                else if (shapeMorph > 1.5 && shapeMorph <= 2.5) txt = "Square";
+                else if (shapeMorph > 2.5) txt = "Ring";
+                shapeVal.innerText = txt;
+            });
         }
 
         function logSystem(msg) {
@@ -647,131 +874,276 @@
             log.scrollTop = log.scrollHeight;
         }
 
-        // --- AI 功能模块 ---
-
+        // --- 本地过程化生成模块 ---
+        // ... existing procedural functions ...
+        
         // 预设点击处理
         function usePreset(name) {
             document.getElementById('ai-input').value = name;
             triggerAI();
         }
 
-        async function triggerAI() {
+        function triggerAI() {
             const input = document.getElementById('ai-input');
             const btn = document.getElementById('ai-btn');
             const log = document.getElementById('ai-log');
-            const prompt = input.value.trim();
+            const prompt = input.value.trim().toLowerCase();
 
             if (!prompt) return;
 
             input.disabled = true;
             btn.disabled = true;
-            log.innerHTML += `\n>> ANALYZING: "${prompt}"...`;
+            log.innerHTML += `\n>> PARSING: "${prompt}"...`;
             log.scrollTop = log.scrollHeight;
 
-            try {
-                const systemPrompt = `
-                    You are a 3D Particle Architect AI.
-                    Your goal is to write the BODY of a JavaScript function that calculates the x, y, z coordinates for a single particle based on its index.
-                    
-                    Input: "${prompt}"
-                    
-                    Context:
-                    - Variable 'i': current particle index (0 to ${particleCount-1}).
-                    - Variable 'count': total particles (${particleCount}).
-                    - Variable 'Math': standard JS Math object.
-                    - Target Scale: Coordinates should generally be within -800 to 800.
-                    
-                    Output Format:
-                    Return ONLY the raw JavaScript code for the function body. Do not use markdown. Do not include 'function() {}'.
-                    The code must end with: return { x: ..., y: ..., z: ... };
-                    
-                    Example Response:
-                    const angle = i * 0.1; const r = 500; return { x: Math.cos(angle)*r, y: Math.sin(angle)*r, z: (i - count/2) * 0.1 };
-                `;
-
-                const result = await callGemini(systemPrompt);
-                const code = result.trim().replace(/```javascript|```/g, ""); 
-
-                log.innerHTML += `\n>> GENERATING GEOMETRY...`;
-                log.scrollTop = log.scrollHeight;
-
-                customShapeCode = code;
-                const newPos = generateCustomPositions(code);
-                transformToCustom(newPos, prompt.toUpperCase());
-                generateLore(prompt);
-
-            } catch (error) {
-                console.error(error);
-                log.innerHTML += `\n[ERROR] QUANTUM CALCULATION FAILED.`;
-            } finally {
-                input.disabled = false;
-                btn.disabled = false;
-                input.value = '';
-                input.focus();
-            }
-        }
-
-        function generateCustomPositions(code) {
-            const particleFunction = new Function('i', 'count', code);
-            const newPos = [];
-            for (let i = 0; i < particleCount; i++) {
+            // 模拟计算延迟
+            setTimeout(() => {
                 try {
-                    const p = particleFunction(i, particleCount);
-                    newPos.push(p.x || 0, p.y || 0, p.z || 0);
-                } catch (e) {
-                    newPos.push(0,0,0);
-                }
-            }
-            return newPos;
-        }
-
-        async function generateLore(shapeName) {
-            const log = document.getElementById('ai-log');
-            try {
-                const prompt = `
-                    You are the AI of a sci-fi spaceship. The chaos matter outside has just formed a shape: "${shapeName}".
-                    Write a 1-sentence system status report (max 15 words).
-                    Style: Technobabble, analytical, slightly alarmed or impressed.
-                `;
-                const text = await callGemini(prompt);
-                log.innerHTML += `\n[SYS] ${text}`;
-                log.scrollTop = log.scrollHeight;
-            } catch (e) {}
-        }
-
-        async function callGemini(text) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-            
-            // 指数退避重试逻辑 (Exponential Backoff)
-            // 重试5次，延迟分别为 1s, 2s, 4s, 8s, 16s
-            for (let i = 0; i < 5; i++) {
-                try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: text }] }]
-                        })
-                    });
-
-                    if (!response.ok) {
-                        // 抛出错误以便被 catch 捕获并重试
-                        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                    let newPos = [];
+                    
+                    // 关键词匹配算法
+                    if (prompt.includes('galaxy') || prompt.includes('spiral')) {
+                        newPos = getProceduralGalaxy();
+                    } else if (prompt.includes('dna') || prompt.includes('helix')) {
+                        newPos = getProceduralDNA();
+                    } else if (prompt.includes('tornado') || prompt.includes('storm')) {
+                        newPos = getProceduralTornado();
+                    } else if (prompt.includes('pyramid')) {
+                        newPos = getProceduralPyramid();
+                    } else if (prompt.includes('atom') || prompt.includes('nucleus')) {
+                        newPos = getProceduralAtom();
+                    } else if (prompt.includes('matrix') || prompt.includes('grid') || prompt.includes('cube')) {
+                        newPos = getProceduralCube();
+                    } else {
+                        // 默认回退到混沌模式
+                         newPos = getProceduralAbstract();
+                         logSystem(`Unknown pattern. Generating Abstract Chaos.`);
                     }
+                    
+                    log.innerHTML += `\n>> CONSTRUCTING GEOMETRY...`;
+                    log.scrollTop = log.scrollHeight;
 
-                    const data = await response.json();
-                    return data.candidates[0].content.parts[0].text;
+                    transformToCustom(newPos, prompt.toUpperCase());
+                    
+                    // 生成一些随机的系统日志
+                    const lores = [
+                         "Geometry synthesized locally.",
+                         "Quantum resonance stable.",
+                         "Structure compiled from void data.",
+                         "Local reality overridden.",
+                         "Entropy reshaped successfully."
+                    ];
+                    logSystem(lores[Math.floor(Math.random() * lores.length)]);
 
                 } catch (error) {
-                    if (i === 4) throw error; // 如果是最后一次尝试失败，则抛出错误
-                    
-                    // 等待一段时间后重试
-                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+                    console.error(error);
+                    log.innerHTML += `\n[ERROR] GENERATION FAILED.`;
+                } finally {
+                    input.disabled = false;
+                    btn.disabled = false;
+                    input.value = '';
+                    input.focus();
                 }
-            }
+            }, 500);
         }
 
-        // --- 图形生成算法 ---
+        // --- 过程化生成算法 (带随机项) ---
+
+        function getProceduralGalaxy() {
+            const arr = [];
+            // 随机参数：旋臂数量(3-6)，紧密度，偏移
+            const arms = Math.floor(rand(3, 7));
+            const spin = rand(0.1, 0.3);
+            const spread = rand(0.5, 1.5);
+            
+            for (let i = 0; i < particleCount; i++) {
+                // 随机分布
+                const t = Math.random(); // 0 to 1 along arm
+                const armIndex = i % arms;
+                const angle = t * Math.PI * 2 * arms * spin + (armIndex * Math.PI * 2 / arms);
+                const r = 800 * t + 50;
+                
+                // 增加随机噪声
+                const noiseX = (Math.random() - 0.5) * 200 * t * spread;
+                const noiseY = (Math.random() - 0.5) * 200 * t * spread;
+                const noiseZ = (Math.random() - 0.5) * 150 * (1 - t); // 中心厚，边缘薄
+
+                arr.push(
+                    Math.cos(angle) * r + noiseX,
+                    Math.sin(angle) * r + noiseY,
+                    noiseZ
+                );
+            }
+            return arr;
+        }
+
+        function getProceduralDNA() {
+            const arr = [];
+            // 随机参数：螺旋速度，半径，长度
+            const twist = rand(0.05, 0.15);
+            const radius = rand(100, 250);
+            const length = rand(1000, 1800);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const layer = i % 2 === 0 ? 1 : -1; // 双链
+                const t = (i / particleCount) * length - length/2;
+                const angle = t * twist;
+                
+                const noise = (Math.random() - 0.5) * 20;
+                
+                arr.push(
+                    Math.cos(angle + (layer * Math.PI)) * radius + noise,
+                    Math.sin(angle + (layer * Math.PI)) * radius + noise,
+                    t + (Math.random() - 0.5) * 50
+                );
+            }
+            return arr;
+        }
+
+        function getProceduralTornado() {
+            const arr = [];
+            // 随机：高度，顶端半径倍率
+            const height = rand(800, 1200);
+            const topSpread = rand(2, 5);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const h = (i / particleCount) * height - height/2;
+                const t = (h + height/2) / height; // 0 (bottom) to 1 (top)
+                const r = 20 + t * 400 * topSpread; // 底部窄，顶部宽
+                const angle = h * 0.1;
+                
+                const noise = (Math.random()-0.5) * 50 * t;
+                
+                arr.push(
+                    Math.cos(angle) * r + noise,
+                    h + (Math.random()-0.5) * 20,
+                    Math.sin(angle) * r + noise
+                );
+            }
+            return arr;
+        }
+
+        function getProceduralPyramid() {
+            const arr = [];
+            const baseSize = rand(600, 1000);
+            
+            for (let i = 0; i < particleCount; i++) {
+                // 随机点在金字塔体积内
+                // x, z range from -size to size based on y height
+                const y = (Math.random() - 0.5) * baseSize; // Height
+                const scale = 1 - (y + baseSize/2) / baseSize; // 1 at bottom, 0 at top
+                
+                // 增加一些边缘聚集效果
+                const edge = Math.random() > 0.8;
+                let x, z;
+                
+                if (edge) {
+                    // 边缘线条
+                    x = (Math.random() > 0.5 ? 1 : -1) * (baseSize/2 * scale);
+                    z = (Math.random() - 0.5) * baseSize * scale;
+                    if (Math.random() > 0.5) [x, z] = [z, x];
+                } else {
+                    // 内部填充
+                    x = (Math.random() - 0.5) * baseSize * scale;
+                    z = (Math.random() - 0.5) * baseSize * scale;
+                }
+
+                arr.push(x, y, z);
+            }
+            return arr;
+        }
+
+        function getProceduralAtom() {
+            const arr = [];
+            const nucleusSize = rand(50, 100);
+            const orbits = Math.floor(rand(3, 6));
+            
+            for (let i = 0; i < particleCount; i++) {
+                if (i < particleCount * 0.2) {
+                    // 核心 (Nucleus)
+                    const r = Math.random() * nucleusSize;
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    arr.push(
+                        r * Math.sin(phi) * Math.cos(theta),
+                        r * Math.sin(phi) * Math.sin(theta),
+                        r * Math.cos(phi)
+                    );
+                } else {
+                    // 电子轨道
+                    const orbitIdx = Math.floor(Math.random() * orbits);
+                    const angleOffset = (Math.PI / orbits) * orbitIdx;
+                    const t = Math.random() * Math.PI * 2;
+                    const radius = rand(300, 600);
+                    
+                    // 旋转轨道平面
+                    const x0 = radius * Math.cos(t);
+                    const y0 = radius * Math.sin(t) * 0.3; // 扁平化
+                    const z0 = (Math.random() - 0.5) * 20; // 轨道厚度
+                    
+                    // 绕随机轴旋转
+                    const cosA = Math.cos(angleOffset * Math.PI); // 增加旋转随机性
+                    const sinA = Math.sin(angleOffset * Math.PI);
+                    
+                    arr.push(
+                        x0 * Math.cos(angleOffset) - y0 * Math.sin(angleOffset), // 简化旋转
+                        x0 * Math.sin(angleOffset) + y0 * Math.cos(angleOffset),
+                        z0 + x0 * Math.sin(angleOffset * 2) // 添加Z轴倾斜
+                    );
+                }
+            }
+            return arr;
+        }
+
+        function getProceduralCube() {
+            const arr = [];
+            const size = rand(600, 900);
+            
+            for (let i = 0; i < particleCount; i++) {
+                // 随机填充立方体，带网格感
+                let x = (Math.random() - 0.5) * size;
+                let y = (Math.random() - 0.5) * size;
+                let z = (Math.random() - 0.5) * size;
+                
+                // 量子化坐标以形成网格
+                const grid = 50;
+                x = Math.round(x / grid) * grid;
+                y = Math.round(y / grid) * grid;
+                z = Math.round(z / grid) * grid;
+                
+                // 随机空缺
+                if (Math.random() > 0.8) {
+                    x *= 2; y *= 2; z *= 2; // 外部飞散点
+                }
+                
+                arr.push(x, y, z);
+            }
+            return arr;
+        }
+
+        function getProceduralAbstract() {
+            const arr = [];
+            // 随机参数生成奇怪的数学形状
+            const a = rand(0.01, 0.1);
+            const b = rand(0.01, 0.1);
+            const c = rand(0.01, 0.1);
+            const scale = rand(300, 600);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const ix = i * a;
+                const iy = i * b;
+                const iz = i * c;
+                
+                arr.push(
+                    Math.sin(ix) * Math.cos(iy) * scale,
+                    Math.cos(ix) * Math.sin(iz) * scale,
+                    Math.sin(iy) * Math.cos(iz) * scale
+                );
+            }
+            return arr;
+        }
+
+        // --- 经典图形生成算法 ---
 
         function getUniverseLayout() {
             const arr = [];
@@ -945,6 +1317,16 @@
             }
 
             TWEEN.update();
+            
+            // 更新连线
+            if (neuralDensity > 0) {
+                updateLines();
+            } else if (linesMesh && linesMesh.visible) {
+                // 如果密度为0但网格还可见，隐藏它
+                const positions = linesGeometry.attributes.position.array;
+                for (let i = 0; i < positions.length; i++) positions[i] = 0;
+                linesGeometry.attributes.position.needsUpdate = true;
+            }
 
             const rotationSpeed = 0.001 * simSpeed;
             let chaosMultiplier = (1.0 - stability) * 5;
@@ -980,22 +1362,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        function generateSprite() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 32;
-            canvas.height = 32;
-            const context = canvas.getContext('2d');
-            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
-            gradient.addColorStop(0, 'rgba(255,255,255,1)');
-            gradient.addColorStop(0.2, 'rgba(255,255,255,0.8)');
-            gradient.addColorStop(0.5, 'rgba(255,255,255,0.2)');
-            gradient.addColorStop(1, 'rgba(0,0,0,0)');
-            context.fillStyle = gradient;
-            context.fillRect(0, 0, 32, 32);
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            return texture;
-        }
+        // generateSprite 已被 Shader 替代，不再需要
         
         window.transformTo = transformTo;
         window.triggerAI = triggerAI;
