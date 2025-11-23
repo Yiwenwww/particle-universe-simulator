@@ -200,7 +200,7 @@
             <div class="control-section">
                 <div class="section-title" onclick="toggleSection(this)">>> VISUAL STYLE & MATERIAL</div>
                 <div class="section-content">
-                    <div class="tag-category">RENDER STYLE (ENV)</div>
+                    <div class="tag-category">RENDER STYLE (ENV) [TAB]</div>
                     <div class="math-tags">
                         <div class="math-tag selected" onclick="setRenderStyle('Universe', this)">Universe</div>
                         <div class="math-tag" onclick="setRenderStyle('Ink', this)">Chinese Ink</div>
@@ -215,7 +215,7 @@
                         <div class="math-tag" onclick="setRenderStyle('Cell', this)">Micro-Cell</div>
                     </div>
 
-                    <div class="tag-category">MATERIAL EFFECT (PARTICLES)</div>
+                    <div class="tag-category">MATERIAL EFFECT (PARTICLES) [SPACE]</div>
                     <div class="math-tags">
                         <div class="math-tag selected" onclick="setMaterialEffect('Particle', this)">Default</div>
                         <div class="math-tag" onclick="setMaterialEffect('Glass', this)">Glass</div>
@@ -273,9 +273,23 @@
                         </div>
                     </div>
                     
+                    <!-- 恢复的频段灵敏度控制 -->
                     <div class="control-row" style="margin-top:10px;">
-                        <div class="control-header"><span>MODULATION MONITOR</span></div>
+                        <div class="control-header"><span>BASS SENSITIVITY</span><span class="control-value" id="bass-sens-val">1.0</span></div>
+                        <input type="range" id="bass-sens-slider" min="0" max="3" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-row">
+                        <div class="control-header"><span>TREBLE SENSITIVITY</span><span class="control-value" id="treble-sens-val">1.0</span></div>
+                        <input type="range" id="treble-sens-slider" min="0" max="3" step="0.1" value="1.0">
+                    </div>
+
+                    <!-- 恢复的完整调制监视器 -->
+                    <div class="control-row" style="margin-top:10px;">
+                        <div class="control-header"><span>MODULATION MONITOR (X/Y)</span></div>
+                        <div class="control-header" style="font-size:9px; color:#aaa;">CUTOFF / BRIGHTNESS (X)</div>
                         <div class="mod-bar-container"><div id="mod-cutoff-bar" class="mod-bar"></div></div>
+                        <div class="control-header" style="font-size:9px; color:#aaa; margin-top:4px;">RES / RIPPLE (Y)</div>
+                        <div class="mod-bar-container"><div id="mod-res-bar" class="mod-bar" style="background:#ff0; box-shadow:0 0 5px #ff0;"></div></div>
                     </div>
 
                     <canvas id="file-visualizer" class="viz-canvas" width="340" height="40"></canvas>
@@ -286,6 +300,9 @@
             <div class="control-section collapsed">
                 <div class="section-title" onclick="toggleSection(this)">>> FINE TUNING</div>
                 <div class="section-content">
+                    <div class="control-row">
+                        <div class="control-header"><span>COLOR CYCLE (TIME)</span><div class="toggle-switch" id="toggle-auto-color"></div></div>
+                    </div>
                     <div class="control-row">
                         <div class="control-header"><span>PARTICLE SIZE</span><span class="control-value" id="size-val">6.0</span></div>
                         <input type="range" id="size-slider" min="1" max="20" step="0.1" value="6.0">
@@ -340,6 +357,7 @@
                     <div class="ai-log" id="ai-log">
                         [SYSTEM] Art Core loaded.
                         [INFO] Style Engine Ready.
+                        [HINT] Tab: Cycle Style | Space: Cycle Material
                     </div>
                 </div>
             </div>
@@ -365,8 +383,12 @@
         let currentShape = 'universe';
         let currentTween = null;
         const transitionParams = { val: 1 };
+        let autoColorCycle = false;
         
-        // --- Styles & Effects ---
+        // --- Styles & Effects Lists for Keyboard Cycling ---
+        const styleList = ['Universe', 'Ink', 'Oil', 'Sketch', 'Forest', 'Ocean', 'Fire', 'Cell'];
+        const materialList = ['Particle', 'Glass', 'Plant', 'Silk', 'Metal', 'Rock'];
+
         let currentStyle = 'Universe';
         let currentEffect = 0; // 0: Particle, 1: Glass, 2: Plant, 3: Silk, 4: Metal, 5: Rock
 
@@ -556,6 +578,8 @@
             uniform float uBass;
             uniform int uEffect; 
             uniform int uStyle; // 0:Universe, 1:Ink, 2:Oil, 3:Forest, 4:Sketch, 5:Cell, 6:Ocean, 7:Fire
+            uniform float uPlayColor;
+            uniform float uTime;
 
             varying vec3 vColor;
             varying vec3 vPos;
@@ -566,7 +590,17 @@
                 float dist = length(uv - 0.5);
                 if (dist > 0.5) discard;
 
-                vec3 finalColor = vColor * uColorTint;
+                vec3 finalColor;
+                
+                // Logic for Dynamic Color (Play Color)
+                if (uPlayColor > 0.5) {
+                    // Time-based color cycle (shifting hue over time)
+                    vec3 cycle = 0.5 + 0.5 * cos(uTime * 0.5 + vec3(0.0, 2.0, 4.0)); 
+                    finalColor = vColor * cycle * 1.5;
+                } else {
+                    finalColor = vColor * uColorTint;
+                }
+
                 float alpha = 1.0;
 
                 // --- Material Effects ---
@@ -574,7 +608,7 @@
                     float rim = smoothstep(0.4, 0.5, dist);
                     float core = smoothstep(0.1, 0.0, dist);
                     alpha = 0.3 + rim * 0.5; 
-                    finalColor += vec3(0.5, 0.8, 1.0) * rim; 
+                    if (uPlayColor <= 0.5) finalColor += vec3(0.5, 0.8, 1.0) * rim; 
                 } 
                 else if (uEffect == 4) { // Metal
                     float shine = smoothstep(0.2, 0.3, dist) * smoothstep(0.5, 0.4, dist);
@@ -592,8 +626,10 @@
                    float edge = smoothstep(0.5, 0.0, dist);
                    // Less desaturation: Mix gray with color at higher ratio (0.8 instead of 0.4)
                    float gray = dot(finalColor, vec3(0.299, 0.587, 0.114));
-                   finalColor = mix(vec3(gray), finalColor, 0.8); 
-                   finalColor *= 0.9; 
+                   if (uPlayColor <= 0.5) { // Only apply style coloring if auto color is off
+                       finalColor = mix(vec3(gray), finalColor, 0.8); 
+                       finalColor *= 0.9; 
+                   }
                    alpha = edge * 0.7; 
                 }
                 else if (uStyle == 2) { // Oil (Van Gogh)
@@ -662,6 +698,21 @@
             document.addEventListener('mousedown', onDocumentMouseDown, false);
             document.addEventListener('mouseup', onDocumentMouseUp, false);
             window.addEventListener('resize', onWindowResize, false);
+            
+            // --- Keyboard Interaction (Tab & Space) ---
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    let idx = styleList.indexOf(currentStyle);
+                    idx = (idx + 1) % styleList.length;
+                    setRenderStyle(styleList[idx]);
+                }
+                if (e.key === ' ') { // Space
+                    e.preventDefault();
+                    let nextIdx = (currentEffect + 1) % materialList.length;
+                    setMaterialEffect(materialList[nextIdx]);
+                }
+            });
 
             setTimeout(() => {
                 document.getElementById('progress').style.width = "100%";
@@ -691,6 +742,7 @@
                     uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uWave: { value: 0.0 }, 
                     uModX: { value: 0.5 }, uModY: { value: 0.0 },
                     uTime: { value: 0.0 },
+                    uPlayColor: { value: autoColorCycle ? 1.0 : 0.0 },
                     uEffect: { value: currentEffect },
                     uStyle: { value: styleMap[currentStyle] || 0 }
                 },
@@ -790,11 +842,18 @@
             };
             if(material) material.uniforms.uStyle.value = styleMap[name];
 
-            // UI Highlight
-            if(el) {
-                const siblings = el.parentElement.querySelectorAll('.math-tag');
-                siblings.forEach(s => s.classList.remove('selected'));
+            // UI Highlight Global Logic (Works for Click & Keyboard)
+            // First, clear all style tags
+            const allStyleTags = document.querySelectorAll('.tag-category:nth-of-type(1) + .math-tags .math-tag, .tag-category:nth-of-type(2) + .math-tags .math-tag');
+            allStyleTags.forEach(t => t.classList.remove('selected'));
+            
+            // Find and select the right one
+            if (el) {
                 el.classList.add('selected');
+            } else {
+                // Keyboard mode: find tag by text/onclick attribute content
+                const target = Array.from(allStyleTags).find(t => t.getAttribute('onclick').includes(`'${name}'`));
+                if(target) target.classList.add('selected');
             }
 
             // Global Scene Logic
@@ -880,10 +939,16 @@
             currentEffect = effectMap[name];
             if(material) material.uniforms.uEffect.value = currentEffect;
 
+            // UI Highlight (Robust for Keyboard)
+            const allEffectTags = document.querySelectorAll('.tag-category:nth-of-type(3) + .math-tags .math-tag');
+            allEffectTags.forEach(t => t.classList.remove('selected'));
+
             if(el) {
-                const siblings = el.parentElement.children;
-                for(let s of siblings) s.classList.remove('selected');
                 el.classList.add('selected');
+            } else {
+                // Keyboard mode
+                const target = Array.from(allEffectTags).find(t => t.getAttribute('onclick').includes(`'${name}'`));
+                if(target) target.classList.add('selected');
             }
             logSystem(`Material Metamorphosis: ${name}`);
         }
@@ -925,6 +990,16 @@
             });
             volumeSlider.addEventListener('input', (e) => { audioElement.volume = e.target.value; });
             gestureBtn.addEventListener('click', toggleGestureMode);
+            
+            // Re-added listeners for restored sliders
+            document.getElementById('bass-sens-slider').addEventListener('input', (e) => { 
+                bassSensitivity = parseFloat(e.target.value); 
+                document.getElementById('bass-sens-val').innerText = bassSensitivity.toFixed(1); 
+            });
+            document.getElementById('treble-sens-slider').addEventListener('input', (e) => { 
+                trebleSensitivity = parseFloat(e.target.value); 
+                document.getElementById('treble-sens-val').innerText = trebleSensitivity.toFixed(1); 
+            });
         }
 
         function initFileAudio(audioElement) {
@@ -1106,6 +1181,14 @@
             
             document.getElementById('toggle-rotate').addEventListener('click', function() { autoRotate = !autoRotate; this.classList.toggle('active'); });
             document.getElementById('pulse-slider').addEventListener('input', (e) => { pulseIntensity = parseFloat(e.target.value); document.getElementById('pulse-val').innerText = (pulseIntensity*100).toFixed(0)+"%"; });
+            
+            document.getElementById('toggle-auto-color').addEventListener('click', function() { 
+                autoColorCycle = !autoColorCycle; 
+                this.classList.toggle('active');
+                if(material) material.uniforms.uPlayColor.value = autoColorCycle ? 1.0 : 0.0;
+                if(autoColorCycle) logSystem("Dynamic Color Cycle: ON");
+                else logSystem("Dynamic Color Cycle: OFF (RGB Restored)");
+            });
         }
 
         function onDocumentMouseMove(event) { 
@@ -1115,7 +1198,11 @@
             if (isGestureActive && fileFilterNode) {
                 normMouseX = event.clientX / window.innerWidth; 
                 normMouseY = event.clientY / window.innerHeight; 
+                
+                // Update Visual Bars
                 document.getElementById('mod-cutoff-bar').style.width = (normMouseX * 100) + "%";
+                document.getElementById('mod-res-bar').style.width = ((1-normMouseY) * 100) + "%";
+
                 const minFreq = 100; const maxFreq = 10000;
                 const freq = minFreq + (maxFreq - minFreq) * normMouseX;
                 fileFilterNode.frequency.setTargetAtTime(freq, fileAudioCtx.currentTime, 0.1);
