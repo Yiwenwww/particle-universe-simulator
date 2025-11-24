@@ -8,7 +8,8 @@
         /* --- 全局设置 --- */
         /* 隐藏默认光标，使用自定义流星光标 */
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; transition: background-color 1.5s ease; cursor: none; }
-        canvas { display: block; }
+        /* 强制 Canvas 无光标，防止继承错误 */
+        canvas { display: block; cursor: none !important; }
 
         /* --- UI 容器 --- */
         #hologram-ui {
@@ -199,19 +200,19 @@
                 </div>
             </h1>
             
-            <!-- 风格与材质 -->
+            <!-- 风格与材质 (ID: style-section-content) -->
             <div class="control-section">
                 <div class="section-title" onclick="toggleSection(this)">>> VISUAL STYLE & MATERIAL</div>
-                <div class="section-content">
+                <div class="section-content" id="style-section-content">
                     <div class="tag-category">RENDER STYLE (ENV) [TAB]</div>
-                    <div class="math-tags">
+                    <div class="math-tags style-group">
                         <div class="math-tag selected" onclick="setRenderStyle('Universe', this)">Universe</div>
                         <div class="math-tag" onclick="setRenderStyle('Ink', this)">Chinese Ink</div>
                         <div class="math-tag" onclick="setRenderStyle('Oil', this)">Van Gogh Oil</div>
                         <div class="math-tag" onclick="setRenderStyle('Sketch', this)">Sketch</div>
                     </div>
                     <div class="tag-category">ELEMENTAL REALMS (NATURE)</div>
-                    <div class="math-tags">
+                    <div class="math-tags style-group">
                         <div class="math-tag" onclick="setRenderStyle('Forest', this)">Forest</div>
                         <div class="math-tag" onclick="setRenderStyle('Ocean', this)">Ocean</div>
                         <div class="math-tag" onclick="setRenderStyle('Fire', this)">Fire</div>
@@ -219,7 +220,7 @@
                     </div>
 
                     <div class="tag-category">MATERIAL EFFECT (PARTICLES) [SPACE]</div>
-                    <div class="math-tags">
+                    <div class="math-tags material-group">
                         <div class="math-tag selected" onclick="setMaterialEffect('Particle', this)">Default</div>
                         <div class="math-tag" onclick="setMaterialEffect('Glass', this)">Glass</div>
                         <div class="math-tag" onclick="setMaterialEffect('Plant', this)">Plant</div>
@@ -329,10 +330,10 @@
                 </div>
             </div>
             
-            <!-- 数学模型面板 -->
+            <!-- 数学模型面板 (ID: shape-section-content) -->
             <div class="control-section" style="border:none; margin-bottom:0;">
                 <div class="section-title" onclick="toggleSection(this)">>> DIMENSIONAL RECONSTRUCTOR</div>
-                <div class="section-content">
+                <div class="section-content" id="shape-section-content">
                     <div class="tag-category">GEOMETRY</div>
                     <div class="math-tags">
                         <div class="math-tag selected" onclick="selectShape('Universe')">Universe</div>
@@ -439,50 +440,29 @@
         function generateAttractor(odeFunc, scale, steps, dt) {
             const arr = [];
             let x = 0.1, y = 0.1, z = 0.1; 
-            // Pre-warm
-            for(let i=0; i<200; i++) { 
-                const d = odeFunc(x,y,z); 
-                x += d.x * dt; y += d.y * dt; z += d.z * dt; 
-            }
-            
-            // Generate
+            for(let i=0; i<100; i++) { const d = odeFunc(x,y,z); x+=d.x*dt; y+=d.y*dt; z+=d.z*dt; }
             for(let i=0; i<particleCount; i++) {
-                const d = odeFunc(x,y,z); 
-                x += d.x * dt; 
-                y += d.y * dt; 
-                z += d.z * dt;
-                
-                // Safety check for explosion
-                if (isNaN(x) || isNaN(y) || isNaN(z) || Math.abs(x)>1000) { x=0.1; y=0.1; z=0.1; }
-
+                const d = odeFunc(x,y,z); x += d.x * dt; y += d.y * dt; z += d.z * dt;
                 const noise = 0.5;
-                arr.push(
-                    x * scale + (Math.random()-0.5)*noise, 
-                    y * scale + (Math.random()-0.5)*noise, 
-                    z * scale + (Math.random()-0.5)*noise
-                );
+                arr.push(x * scale + (Math.random()-0.5)*noise, y * scale + (Math.random()-0.5)*noise, z * scale + (Math.random()-0.5)*noise);
             }
             return arr;
         }
 
-        // Improved Generator wrapper for stiff systems (Halvorsen/Thomas)
-        // Performs multiple micro-steps per visible particle to ensure stability and length
+        // Improved Generator wrapper for stiff systems
         function generateStiffAttractor(odeFunc, scale, dt, microSteps=1) {
             const arr = [];
             let x = 0.1, y = 0.1, z = 0.1;
-            // Pre-warm
             for(let i=0; i<100*microSteps; i++) {
                 const d = odeFunc(x,y,z);
                 x += d.x * dt; y += d.y * dt; z += d.z * dt;
             }
             for(let i=0; i<particleCount; i++) {
-                // Run micro-steps
                 for(let j=0; j<microSteps; j++) {
                     const d = odeFunc(x,y,z);
                     x += d.x * dt; y += d.y * dt; z += d.z * dt;
                 }
-                if (isNaN(x) || Math.abs(x)>1000) { x=0.1; y=0.1; z=0.1; } // Reset if exploded
-                
+                if (isNaN(x) || Math.abs(x)>1000) { x=0.1; y=0.1; z=0.1; } 
                 const noise = 0.5;
                 arr.push(x * scale + (Math.random()-0.5)*noise, y * scale + (Math.random()-0.5)*noise, z * scale + (Math.random()-0.5)*noise);
             }
@@ -493,21 +473,17 @@
         function getAizawa() { const a=0.95, b=0.7, c=0.6, d=3.5, e=0.25, f=0.1; return generateAttractor((x,y,z)=>({x:(z-b)*x-d*y,y:d*x+(z-b)*y,z:c+a*z-z*z*z/3-(x*x+y*y)*(1+e*z)+f*z*x*x*x}), 150, particleCount, 0.01); }
         function getDadras() { const p=3, q=2.7, r=1.7, s=2, e=9; return generateAttractor((x,y,z)=>({x:y-p*x+q*y*z,y:r*y-x*z+z,z:s*x*y-e*z}), 40, particleCount, 0.005); }
         
-        // Fixed Attractors
-        
         function getRossler() {
             const a=0.2, b=0.2, c=5.7;
-            // Rossler scale ~15-20. Range expands to ~20.
             return generateAttractor((x,y,z) => ({
                 x: -y - z,
                 y: x + a*y,
                 z: b + z*(x - c)
-            }), 15, particleCount, 0.02);
+            }), 20, particleCount, 0.025);
         }
         
         function getChen() {
             const a=35, b=3, c=28;
-            // Chen scale ~15. Range ~30. 15*30 = 450.
             return generateStiffAttractor((x,y,z) => ({
                 x: a*(y - x),
                 y: (c - a)*x - x*z + c*y,
@@ -515,43 +491,31 @@
             }), 15, 0.002, 2);
         }
 
-        // New Fractals - Optimized Menger Sponge (Iterative)
         function getMenger() {
             const arr = [];
             const size = 600; 
             let count = 0;
             const maxAttempts = particleCount * 50; 
             let attempts = 0;
-
             while (count < particleCount && attempts < maxAttempts) {
                 attempts++;
                 const x = (Math.random() - 0.5) * size;
                 const y = (Math.random() - 0.5) * size;
                 const z = (Math.random() - 0.5) * size;
-
                 let isHole = false;
                 let cx = x + size/2;
                 let cy = y + size/2;
                 let cz = z + size/2;
-                
                 let s = size;
                 for (let i = 0; i < 4; i++) {
                     s /= 3;
                     const dx = Math.floor(cx / s) % 3;
                     const dy = Math.floor(cy / s) % 3;
                     const dz = Math.floor(cz / s) % 3;
-                    
                     const ones = (dx === 1 ? 1 : 0) + (dy === 1 ? 1 : 0) + (dz === 1 ? 1 : 0);
-                    if (ones >= 2) {
-                        isHole = true;
-                        break;
-                    }
+                    if (ones >= 2) { isHole = true; break; }
                 }
-
-                if (!isHole) {
-                    arr.push(x, y, z);
-                    count++;
-                }
+                if (!isHole) { arr.push(x, y, z); count++; }
             }
             return arr;
         }
@@ -562,18 +526,15 @@
             const maxIter = 8;
             const bound = 1.5;
             const scale = 300;
-            
             let i = 0;
             while(i < particleCount) {
                 let x = (Math.random() * 2 - 1) * bound;
                 let y = (Math.random() * 2 - 1) * bound;
                 let z = (Math.random() * 2 - 1) * bound;
                 let w = (Math.random() * 2 - 1) * bound;
-                
                 let escaped = false;
                 let j = 0;
                 let qx=x, qy=y, qz=z, qw=w;
-                
                 for(j=0; j<maxIter; j++) {
                     let nw = qw*qw - qx*qx - qy*qy - qz*qz + c.w;
                     let nx = 2*qw*qx + c.x;
@@ -1093,6 +1054,7 @@
 
         // --- Core Logic for Style & Effect ---
         function setRenderStyle(name, el) {
+            if(document.activeElement) document.activeElement.blur(); // Release focus
             currentStyle = name;
             // 0:Universe, 1:Ink, 2:Oil, 3:Forest, 4:Sketch, 5:Cell, 6:Ocean, 7:Fire
             const styleMap = { 
@@ -1101,18 +1063,20 @@
             };
             if(material) material.uniforms.uStyle.value = styleMap[name];
 
-            // UI Highlight Global Logic (Works for Click & Keyboard)
-            // First, clear all style tags
-            const allStyleTags = document.querySelectorAll('.tag-category:nth-of-type(1) + .math-tags .math-tag, .tag-category:nth-of-type(2) + .math-tags .math-tag');
-            allStyleTags.forEach(t => t.classList.remove('selected'));
-            
-            // Find and select the right one
-            if (el) {
-                el.classList.add('selected');
-            } else {
-                // Keyboard mode: find tag by text/onclick attribute content
-                const target = Array.from(allStyleTags).find(t => t.getAttribute('onclick').includes(`'${name}'`));
-                if(target) target.classList.add('selected');
+            // Scoped UI Highlight 
+            // Only clear tags inside #style-section-content .style-group
+            const container = document.getElementById('style-section-content');
+            if(container) {
+                const styleTags = container.querySelectorAll('.style-group .math-tag');
+                styleTags.forEach(t => t.classList.remove('selected'));
+                
+                if (el) {
+                    el.classList.add('selected');
+                } else {
+                    // Keyboard mode: find tag by onclick text
+                    const target = Array.from(styleTags).find(t => t.getAttribute('onclick').includes(`'${name}'`));
+                    if(target) target.classList.add('selected');
+                }
             }
 
             // Global Scene Logic
@@ -1194,20 +1158,25 @@
         }
 
         function setMaterialEffect(name, el) {
+            if(document.activeElement) document.activeElement.blur(); // Release focus
             const effectMap = { 'Particle':0, 'Glass':1, 'Plant':2, 'Silk':3, 'Metal':4, 'Rock':5 };
             currentEffect = effectMap[name];
             if(material) material.uniforms.uEffect.value = currentEffect;
 
-            // UI Highlight (Robust for Keyboard)
-            const allEffectTags = document.querySelectorAll('.tag-category:nth-of-type(3) + .math-tags .math-tag');
-            allEffectTags.forEach(t => t.classList.remove('selected'));
+            // Scoped UI Highlight 
+            // Only clear tags inside #style-section-content .material-group
+            const container = document.getElementById('style-section-content');
+            if(container) {
+                const matTags = container.querySelectorAll('.material-group .math-tag');
+                matTags.forEach(t => t.classList.remove('selected'));
 
-            if(el) {
-                el.classList.add('selected');
-            } else {
-                // Keyboard mode
-                const target = Array.from(allEffectTags).find(t => t.getAttribute('onclick').includes(`'${name}'`));
-                if(target) target.classList.add('selected');
+                if(el) {
+                    el.classList.add('selected');
+                } else {
+                    // Keyboard mode
+                    const target = Array.from(matTags).find(t => t.getAttribute('onclick').includes(`'${name}'`));
+                    if(target) target.classList.add('selected');
+                }
             }
             logSystem(`Material Metamorphosis: ${name}`);
         }
@@ -1481,6 +1450,19 @@
             mouseVector.x = ( event.clientX / window.innerWidth ) * 2 - 1;
             mouseVector.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
 
+            // Cursor Visibility Logic
+            const isHoveringUI = event.target.closest('#hologram-ui');
+            if (isHoveringUI) {
+                document.body.style.cursor = 'default';
+            } else {
+                document.body.style.cursor = 'none';
+                // Force blur only if we are not dragging something (buttons = 0)
+                // This fixes the issue where a clicked button keeps focus and shows the cursor
+                if (event.buttons === 0 && document.activeElement && document.activeElement !== document.body) {
+                    document.activeElement.blur();
+                }
+            }
+
             if (isGestureActive && fileFilterNode) {
                 normMouseX = event.clientX / window.innerWidth; 
                 normMouseY = event.clientY / window.innerHeight; 
@@ -1518,7 +1500,19 @@
         function logSystem(msg) { const log = document.getElementById('ai-log'); log.innerHTML += `\n[SYS] ${msg}`; log.scrollTop = log.scrollHeight; }
         
         function selectShape(shapeName) {
-            document.querySelectorAll('.math-tag').forEach(t => t.classList.remove('selected'));
+            if(document.activeElement) document.activeElement.blur(); // Release focus to hide mouse
+            
+            // Scoped UI Highlight for Shapes (ID: shape-section-content)
+            const container = document.getElementById('shape-section-content');
+            if(container) {
+                const shapeTags = container.querySelectorAll('.math-tag');
+                shapeTags.forEach(t => t.classList.remove('selected'));
+                
+                // Find target by onclick attribute (for both click and code calls)
+                const target = Array.from(shapeTags).find(t => t.getAttribute('onclick').includes(`'${shapeName}'`));
+                if(target) target.classList.add('selected');
+            }
+
             logSystem(`Model: ${shapeName}`);
             currentShape = shapeName;
             updateParticleGeometry(shapeName);
