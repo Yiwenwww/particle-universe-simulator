@@ -6,7 +6,8 @@
     <title>Chaos Universe: Elemental Edition</title>
     <style>
         /* --- 全局设置 --- */
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; transition: background-color 1.5s ease; }
+        /* 隐藏默认光标，使用自定义流星光标 */
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; transition: background-color 1.5s ease; cursor: none; }
         canvas { display: block; }
 
         /* --- UI 容器 --- */
@@ -19,6 +20,8 @@
             scrollbar-width: thin;
             scrollbar-color: #0ff rgba(0, 20, 40, 0.5);
             transition: max-height 0.3s ease;
+            /* 在 UI 区域恢复默认光标，方便操作 */
+            cursor: default;
         }
 
         /* 针对浅色背景风格的 UI 适配类 */
@@ -342,6 +345,8 @@
                     <div class="tag-category">CHAOS ATTRACTORS</div>
                     <div class="math-tags">
                         <div class="math-tag" onclick="selectShape('Lorenz')">Lorenz</div>
+                        <div class="math-tag" onclick="selectShape('Rössler')">Rössler</div>
+                        <div class="math-tag" onclick="selectShape('Chen')">Chen</div>
                         <div class="math-tag" onclick="selectShape('Aizawa')">Aizawa</div>
                         <div class="math-tag" onclick="selectShape('Dadras')">Dadras</div>
                     </div>
@@ -350,6 +355,9 @@
                     <div class="math-tags">
                         <div class="math-tag" onclick="selectShape('Sierpinski')">Sierpinski</div>
                         <div class="math-tag" onclick="selectShape('Mandelbulb')">Mandelbulb</div>
+                        <div class="math-tag" onclick="selectShape('Menger')">Menger</div>
+                        <div class="math-tag" onclick="selectShape('Julia')">Julia</div>
+                        <div class="math-tag" onclick="selectShape('Clifford')">Clifford</div>
                         <div class="math-tag" onclick="selectShape('DNA')">DNA</div>
                         <div class="math-tag" onclick="selectShape('Atom')">Atom</div>
                     </div>
@@ -367,12 +375,22 @@
     <script>
         // --- 3D Variables ---
         let scene, camera, renderer;
-        let particles, geometry, material;
+        let particles, geometry, material, cursorMaterial;
         let linesMesh, linesGeometry;
         let connections = [];
         let particleCount = 20000;
         const maxLines = 10000;
         
+        // Cursor Meteor Variables
+        let cursorHead, cursorTrail;
+        let trailPositions = [];
+        const TRAIL_LENGTH = 30;
+        const raycaster = new THREE.Raycaster();
+        const mousePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); 
+        const mouseVector = new THREE.Vector2();
+        const worldMouse = new THREE.Vector3();
+        let isCursorInPanel = false; // Flag to check if cursor is in UI
+
         // --- Control Variables ---
         let simSpeed = 1.0;
         let particleSize = 6.0;
@@ -421,9 +439,50 @@
         function generateAttractor(odeFunc, scale, steps, dt) {
             const arr = [];
             let x = 0.1, y = 0.1, z = 0.1; 
-            for(let i=0; i<100; i++) { const d = odeFunc(x,y,z); x+=d.x*dt; y+=d.y*dt; z+=d.z*dt; }
+            // Pre-warm
+            for(let i=0; i<200; i++) { 
+                const d = odeFunc(x,y,z); 
+                x += d.x * dt; y += d.y * dt; z += d.z * dt; 
+            }
+            
+            // Generate
             for(let i=0; i<particleCount; i++) {
-                const d = odeFunc(x,y,z); x += d.x * dt; y += d.y * dt; z += d.z * dt;
+                const d = odeFunc(x,y,z); 
+                x += d.x * dt; 
+                y += d.y * dt; 
+                z += d.z * dt;
+                
+                // Safety check for explosion
+                if (isNaN(x) || isNaN(y) || isNaN(z) || Math.abs(x)>1000) { x=0.1; y=0.1; z=0.1; }
+
+                const noise = 0.5;
+                arr.push(
+                    x * scale + (Math.random()-0.5)*noise, 
+                    y * scale + (Math.random()-0.5)*noise, 
+                    z * scale + (Math.random()-0.5)*noise
+                );
+            }
+            return arr;
+        }
+
+        // Improved Generator wrapper for stiff systems (Halvorsen/Thomas)
+        // Performs multiple micro-steps per visible particle to ensure stability and length
+        function generateStiffAttractor(odeFunc, scale, dt, microSteps=1) {
+            const arr = [];
+            let x = 0.1, y = 0.1, z = 0.1;
+            // Pre-warm
+            for(let i=0; i<100*microSteps; i++) {
+                const d = odeFunc(x,y,z);
+                x += d.x * dt; y += d.y * dt; z += d.z * dt;
+            }
+            for(let i=0; i<particleCount; i++) {
+                // Run micro-steps
+                for(let j=0; j<microSteps; j++) {
+                    const d = odeFunc(x,y,z);
+                    x += d.x * dt; y += d.y * dt; z += d.z * dt;
+                }
+                if (isNaN(x) || Math.abs(x)>1000) { x=0.1; y=0.1; z=0.1; } // Reset if exploded
+                
                 const noise = 0.5;
                 arr.push(x * scale + (Math.random()-0.5)*noise, y * scale + (Math.random()-0.5)*noise, z * scale + (Math.random()-0.5)*noise);
             }
@@ -433,9 +492,121 @@
         function getLorenz() { const sigma=10, rho=28, beta=8/3; return generateAttractor((x,y,z)=>({x:sigma*(y-x),y:x*(rho-z)-y,z:x*y-beta*z}), 15, particleCount, 0.005); }
         function getAizawa() { const a=0.95, b=0.7, c=0.6, d=3.5, e=0.25, f=0.1; return generateAttractor((x,y,z)=>({x:(z-b)*x-d*y,y:d*x+(z-b)*y,z:c+a*z-z*z*z/3-(x*x+y*y)*(1+e*z)+f*z*x*x*x}), 150, particleCount, 0.01); }
         function getDadras() { const p=3, q=2.7, r=1.7, s=2, e=9; return generateAttractor((x,y,z)=>({x:y-p*x+q*y*z,y:r*y-x*z+z,z:s*x*y-e*z}), 40, particleCount, 0.005); }
+        
+        // Fixed Attractors
+        
+        function getRossler() {
+            const a=0.2, b=0.2, c=5.7;
+            // Rossler scale ~15-20. Range expands to ~20.
+            return generateAttractor((x,y,z) => ({
+                x: -y - z,
+                y: x + a*y,
+                z: b + z*(x - c)
+            }), 15, particleCount, 0.02);
+        }
+        
+        function getChen() {
+            const a=35, b=3, c=28;
+            // Chen scale ~15. Range ~30. 15*30 = 450.
+            return generateStiffAttractor((x,y,z) => ({
+                x: a*(y - x),
+                y: (c - a)*x - x*z + c*y,
+                z: x*y - b*z
+            }), 15, 0.002, 2);
+        }
+
+        // New Fractals - Optimized Menger Sponge (Iterative)
+        function getMenger() {
+            const arr = [];
+            const size = 600; 
+            let count = 0;
+            const maxAttempts = particleCount * 50; 
+            let attempts = 0;
+
+            while (count < particleCount && attempts < maxAttempts) {
+                attempts++;
+                const x = (Math.random() - 0.5) * size;
+                const y = (Math.random() - 0.5) * size;
+                const z = (Math.random() - 0.5) * size;
+
+                let isHole = false;
+                let cx = x + size/2;
+                let cy = y + size/2;
+                let cz = z + size/2;
+                
+                let s = size;
+                for (let i = 0; i < 4; i++) {
+                    s /= 3;
+                    const dx = Math.floor(cx / s) % 3;
+                    const dy = Math.floor(cy / s) % 3;
+                    const dz = Math.floor(cz / s) % 3;
+                    
+                    const ones = (dx === 1 ? 1 : 0) + (dy === 1 ? 1 : 0) + (dz === 1 ? 1 : 0);
+                    if (ones >= 2) {
+                        isHole = true;
+                        break;
+                    }
+                }
+
+                if (!isHole) {
+                    arr.push(x, y, z);
+                    count++;
+                }
+            }
+            return arr;
+        }
+
+        function getJulia() {
+            const arr = [];
+            const c = { w: -0.2, x: 0.6, y: 0.2, z: 0.2 }; 
+            const maxIter = 8;
+            const bound = 1.5;
+            const scale = 300;
+            
+            let i = 0;
+            while(i < particleCount) {
+                let x = (Math.random() * 2 - 1) * bound;
+                let y = (Math.random() * 2 - 1) * bound;
+                let z = (Math.random() * 2 - 1) * bound;
+                let w = (Math.random() * 2 - 1) * bound;
+                
+                let escaped = false;
+                let j = 0;
+                let qx=x, qy=y, qz=z, qw=w;
+                
+                for(j=0; j<maxIter; j++) {
+                    let nw = qw*qw - qx*qx - qy*qy - qz*qz + c.w;
+                    let nx = 2*qw*qx + c.x;
+                    let ny = 2*qw*qy + c.y;
+                    let nz = 2*qw*qz + c.z;
+                    qw=nw; qx=nx; qy=ny; qz=nz;
+                    if(qw*qw+qx*qx+qy*qy+qz*qz > 4) { escaped = true; break; }
+                }
+                if(!escaped) { arr.push(x*scale, y*scale, z*scale); i++; }
+            }
+            return arr;
+        }
+
+        function getClifford() {
+            const arr = [];
+            const scale = 300;
+            for(let i=0; i<particleCount; i++) {
+                const u = Math.random() * Math.PI * 2;
+                const v = Math.random() * Math.PI * 2;
+                const p1 = Math.cos(u);
+                const p2 = Math.sin(u);
+                const p3 = Math.cos(v);
+                const p4 = Math.sin(v);
+                const x = p1 / (1 - p4 * 0.5);
+                const y = p2 / (1 - p4 * 0.5);
+                const z = p3 / (1 - p4 * 0.5);
+                arr.push(x*scale, y*scale, z*scale);
+            }
+            return arr;
+        }
 
         function getSierpinski() {
-            const arr=[]; const corners=[{x:400,y:-300,z:400},{x:-400,y:-300,z:400},{x:0,y:-300,z:-400},{x:0,y:400,z:0}];
+            const arr = []; const corners=[{x:400,y:-300,z:400},{x:-400,y:-300,z:400},{x:0,y:-300,z:-400},{x:0,y:400,z:0}];
             let cx=0,cy=0,cz=0;
             for(let i=0; i<particleCount; i++) {
                 const t=corners[Math.floor(Math.random()*4)]; cx=(cx+t.x)/2; cy=(cy+t.y)/2; cz=(cz+t.z)/2;
@@ -463,8 +634,10 @@
 
         const shapeGenerators = {
             'Universe': getUniverse, 'Heart': getHeart, 'Mobius': getMobius, 'Penrose': getPenrose, 'Tornado': getTornado,
-            'Lorenz': getLorenz, 'Aizawa': getAizawa, 'Dadras': getDadras,
-            'Sierpinski': getSierpinski, 'Mandelbulb': getMandelbulb, 'DNA': getDNA, 'Atom': getAtom
+            'Lorenz': getLorenz, 'Rössler': getRossler, 'Chen': getChen, 
+            'Aizawa': getAizawa, 'Dadras': getDadras,
+            'Sierpinski': getSierpinski, 'Mandelbulb': getMandelbulb, 'Menger': getMenger, 'Julia': getJulia, 'Clifford': getClifford,
+            'DNA': getDNA, 'Atom': getAtom
         };
 
         // --- SHADERS (Enhanced) ---
@@ -693,6 +866,7 @@
             initParticles(particleCount);
             initLines();
             generateConnections();
+            initCursor(); // 初始化流星光标
 
             document.addEventListener('mousemove', onDocumentMouseMove, false);
             document.addEventListener('mousedown', onDocumentMouseDown, false);
@@ -721,6 +895,91 @@
                     setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
                 }, 300);
             }, 500);
+        }
+
+        // --- Cursor Meteor Logic ---
+        function initCursor() {
+            // 构建与主粒子一致的 Shader，注入拖尾逻辑
+            // Vertex Shader Injection
+            const cursorVertex = vertexShader
+                .replace('void main() {', 'attribute float alpha; varying float vTrailAlpha; void main() { vTrailAlpha = alpha;')
+                .replace('vAlpha = 1.0;', 'vAlpha = 1.0;'); // Ensure vAlpha logic is consistent
+
+            // Fragment Shader Injection
+            const cursorFragment = fragmentShader
+                .replace('varying float vAlpha;', 'varying float vAlpha; varying float vTrailAlpha;')
+                .replace('gl_FragColor = vec4(finalColor, alpha);', 'gl_FragColor = vec4(finalColor, alpha * vTrailAlpha);');
+
+            // 1. Cursor Head (Bright Particle)
+            const headGeo = new THREE.BufferGeometry();
+            headGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0]), 3));
+            headGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array([1, 1, 1]), 3)); // Default white
+            headGeo.setAttribute('alpha', new THREE.BufferAttribute(new Float32Array([1.0]), 1)); // Head is fully opaque
+
+            // Re-use main uniforms pattern but separate instance
+            // We will sync values in animate loop
+            const cursorUniforms = THREE.UniformsUtils.clone(material.uniforms);
+            
+            cursorMaterial = new THREE.ShaderMaterial({
+                uniforms: cursorUniforms,
+                vertexShader: cursorVertex,
+                fragmentShader: cursorFragment,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                vertexColors: true // Correctly enable vertexColors
+            });
+
+            cursorHead = new THREE.Points(headGeo, cursorMaterial);
+            cursorHead.frustumCulled = false;
+            scene.add(cursorHead);
+
+            // 2. Cursor Trail (Fading Particles)
+            const trailGeo = new THREE.BufferGeometry();
+            const trailPos = new Float32Array(TRAIL_LENGTH * 3);
+            const trailCols = new Float32Array(TRAIL_LENGTH * 3);
+            const trailAlphas = new Float32Array(TRAIL_LENGTH);
+
+            for(let i=0; i<TRAIL_LENGTH; i++) {
+                trailCols[i*3] = 1; trailCols[i*3+1] = 1; trailCols[i*3+2] = 1;
+                trailAlphas[i] = 1.0 - (i / TRAIL_LENGTH); // Fade out
+            }
+
+            trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+            trailGeo.setAttribute('color', new THREE.BufferAttribute(trailCols, 3));
+            trailGeo.setAttribute('alpha', new THREE.BufferAttribute(trailAlphas, 1));
+
+            cursorTrail = new THREE.Points(trailGeo, cursorMaterial); // Share same material
+            cursorTrail.frustumCulled = false;
+            scene.add(cursorTrail);
+
+            // Initialize trail buffer
+            for(let i=0; i<TRAIL_LENGTH; i++) trailPositions.push(new THREE.Vector3(0,0,0));
+        }
+
+        function updateCursor() {
+            if (!cursorHead || !cursorTrail) return;
+
+            // Raycast to find world position of mouse on Z=0 plane
+            raycaster.setFromCamera(mouseVector, camera);
+            const intersect = new THREE.Vector3();
+            raycaster.ray.intersectPlane(mousePlane, intersect);
+            
+            // Update Head
+            cursorHead.position.copy(intersect);
+            
+            // Update Trail Buffer
+            trailPositions.pop();
+            trailPositions.unshift(intersect.clone());
+
+            // Update Trail Geometry
+            const positions = cursorTrail.geometry.attributes.position.array;
+            for(let i=0; i<TRAIL_LENGTH; i++) {
+                positions[i*3] = trailPositions[i].x;
+                positions[i*3+1] = trailPositions[i].y;
+                positions[i*3+2] = trailPositions[i].z;
+            }
+            cursorTrail.geometry.attributes.position.needsUpdate = true;
         }
 
         function initParticles(count) {
@@ -1138,6 +1397,26 @@
             
             if (material) material.uniforms.uTime.value = time * 0.001;
 
+            // Sync Cursor Uniforms with Main Uniforms
+            if (cursorMaterial) {
+                cursorMaterial.uniforms.uBass.value = material.uniforms.uBass.value;
+                cursorMaterial.uniforms.uTreble.value = material.uniforms.uTreble.value;
+                cursorMaterial.uniforms.uWave.value = material.uniforms.uWave.value;
+                cursorMaterial.uniforms.uModX.value = material.uniforms.uModX.value;
+                cursorMaterial.uniforms.uModY.value = material.uniforms.uModY.value;
+                cursorMaterial.uniforms.uTime.value = material.uniforms.uTime.value;
+                cursorMaterial.uniforms.uPlayColor.value = material.uniforms.uPlayColor.value;
+                cursorMaterial.uniforms.uEffect.value = material.uniforms.uEffect.value;
+                cursorMaterial.uniforms.uStyle.value = material.uniforms.uStyle.value;
+                cursorMaterial.uniforms.uColorTint.value.copy(material.uniforms.uColorTint.value);
+                // Size scaling for cursor (keep it relative to main particle size but usually larger for visibility)
+                // Or just use same size
+                cursorMaterial.uniforms.size.value = material.uniforms.size.value * 1.5; 
+                
+                // Ensure blending matches style
+                cursorMaterial.blending = material.blending;
+            }
+
             const rotationSpeed = 0.001 * simSpeed;
 
             if (autoRotate) {
@@ -1148,6 +1427,9 @@
 
             particles.rotation.y += rotationSpeed;
             particles.rotation.z += rotationSpeed * 0.2;
+
+            // Update the cursor (meteor) every frame
+            updateCursor();
 
             camera.position.x += (mouseX - camera.position.x) * 0.05 * simSpeed;
             camera.position.y += (-mouseY - camera.position.y) * 0.05 * simSpeed;
@@ -1195,6 +1477,10 @@
             mouseX = (event.clientX - windowHalfX) * 1; 
             mouseY = (event.clientY - windowHalfY) * 1; 
             
+            // Update normalized mouse coordinates for raycasting
+            mouseVector.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+            mouseVector.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
             if (isGestureActive && fileFilterNode) {
                 normMouseX = event.clientX / window.innerWidth; 
                 normMouseY = event.clientY / window.innerHeight; 
