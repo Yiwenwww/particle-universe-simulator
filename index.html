@@ -23,6 +23,8 @@
             transition: max-height 0.3s ease;
             /* 在 UI 区域恢复默认光标，方便操作 */
             cursor: default;
+            /* 允许在UI内部进行原生触摸滚动 */
+            touch-action: pan-y;
         }
 
         /* 移动端适配 */
@@ -293,7 +295,8 @@
                 <div class="section-content">
                     <div class="control-row">
                         <div class="control-header"><span>AUDIO SOURCE</span></div>
-                        <input type="file" id="audio-file" accept="audio/*" class="sci-fi-file-input">
+                        <!-- 修复：明确指定 .mp3 扩展名，以兼容部分移动端文件选择器 -->
+                        <input type="file" id="audio-file" accept=".mp3,audio/*" class="sci-fi-file-input">
                     </div>
                     <div class="control-row" style="display:flex; align-items:center; gap:10px;">
                         <button id="audio-play-btn" class="sci-fi-btn-small">PLAY</button>
@@ -1506,6 +1509,9 @@
                     isFilePlaying = true;
                     playBtn.innerText = "PAUSE";
                     logSystem("Audio stream engaged.");
+                }).catch(err => {
+                    console.error(err);
+                    logSystem("Playback blocked. Tap PLAY.");
                 });
             });
 
