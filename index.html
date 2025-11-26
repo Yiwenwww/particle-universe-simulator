@@ -2,1371 +2,1972 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chaos Particle Universe + Local Procedural Core</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Chaos Universe: Elemental Edition (Morphing Core)</title>
     <style>
         /* --- 全局设置 --- */
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #000;
-            font-family: 'Courier New', Courier, monospace;
-            user-select: none;
-        }
+        /* 隐藏默认光标，使用自定义流星光标 */
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; transition: background-color 1.5s ease; cursor: none; touch-action: none; }
+        /* 强制 Canvas 无光标，防止继承错误 */
+        canvas { display: block; cursor: none !important; touch-action: none; }
 
-        canvas {
-            display: block;
-        }
-
-        /* --- 全息 UI 面板容器 --- */
+        /* --- UI 容器 --- */
         #hologram-ui {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 360px; /* 加宽以容纳更多控件 */
-            pointer-events: none;
-            z-index: 10;
-            max-height: 90vh; /* 防止过高 */
-            overflow-y: auto; /* 允许内容过多时滚动 */
-            scrollbar-width: none; /* 隐藏滚动条(Firefox) */
+            position: absolute; top: 20px; left: 20px; width: 380px;
+            pointer-events: auto; 
+            z-index: 10; max-height: 90vh;
+            overflow-y: auto; 
+            padding-right: 5px;
+            scrollbar-width: thin;
+            scrollbar-color: #0ff rgba(0, 20, 40, 0.5);
+            transition: max-height 0.3s ease;
+            /* 在 UI 区域恢复默认光标，方便操作 */
+            cursor: default;
+            /* 允许在UI内部进行原生触摸滚动 */
+            touch-action: pan-y;
         }
-        #hologram-ui::-webkit-scrollbar { display: none; } /* 隐藏滚动条(Chrome) */
 
+        /* 移动端适配 */
+        @media (max-width: 600px) {
+            #hologram-ui {
+                width: 90%; /* 手机上更宽 */
+                left: 5%;
+                top: 10px;
+                max-height: 80vh;
+            }
+            .sci-fi-btn-small {
+                padding: 8px 16px; /* 按钮更大更好按 */
+                font-size: 12px;
+            }
+            input[type=range]::-webkit-slider-thumb {
+                width: 16px; /* 滑块更大 */
+                height: 16px;
+                margin-top: -6px;
+            }
+            .math-tag {
+                padding: 8px 12px; /* 标签更大 */
+                font-size: 11px;
+            }
+        }
+
+        /* 针对浅色背景风格的 UI 适配类 */
+        body.light-mode #hologram-ui {
+            scrollbar-color: #555 rgba(200, 200, 200, 0.5);
+        }
+        body.light-mode .panel-frame {
+            background: rgba(245, 240, 230, 0.85); /* 适配更黄的宣纸背景 */
+            border: 1px solid rgba(120, 100, 80, 0.3);
+            border-left: 4px solid rgba(80, 60, 40, 0.8);
+            color: #333;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+        body.light-mode h1 {
+            color: #4a3b2a; text-shadow: none; border-bottom-color: rgba(0,0,0,0.2);
+        }
+        body.light-mode .section-title {
+            color: #5d4e3c; background: rgba(0,0,0,0.05);
+        }
+        body.light-mode .control-header, body.light-mode .control-value {
+            color: #444;
+        }
+        body.light-mode .math-tag {
+            border-color: rgba(100,80,60,0.2); color: #555; background: rgba(0,0,0,0.05);
+        }
+        body.light-mode .math-tag.selected {
+            background: #4a3b2a; color: #fff; border-color: #4a3b2a;
+        }
+        body.light-mode .ai-log {
+            color: #333; background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1);
+        }
+        body.light-mode .refresh-btn {
+             background: rgba(0,0,0,0.1); color: #333; border-color: #666;
+        }
+        body.light-mode .sci-fi-btn-small {
+            color: #333; border-color: #888; background: rgba(0,0,0,0.05);
+        }
+        body.light-mode .sci-fi-btn-small:hover {
+            color: #fff; background: #4a3b2a; border-color: #4a3b2a;
+        }
+
+        /* 收缩状态样式 */
+        #hologram-ui.minimized {
+            max-height: 45px !important;
+            overflow: hidden;
+        }
+
+        /* --- 自定义滚动条样式 --- */
+        #hologram-ui::-webkit-scrollbar { width: 6px; display: block; }
+        #hologram-ui::-webkit-scrollbar-track { background: rgba(0, 20, 40, 0.5); border-left: 1px solid rgba(0, 255, 255, 0.1); }
+        #hologram-ui::-webkit-scrollbar-thumb { background: rgba(0, 255, 255, 0.2); border: 1px solid rgba(0, 255, 255, 0.5); border-radius: 3px; }
+        
         /* 面板框架 */
         .panel-frame {
             background: rgba(0, 20, 40, 0.85);
             border: 1px solid rgba(0, 255, 255, 0.3);
             border-left: 4px solid rgba(0, 255, 255, 0.8);
-            padding: 15px;
-            backdrop-filter: blur(6px);
+            padding: 15px; backdrop-filter: blur(6px);
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.15);
-            position: relative;
-            overflow: hidden;
-            pointer-events: auto;
-            margin-bottom: 10px;
+            position: relative; overflow: hidden; pointer-events: auto;
+            margin-bottom: 10px; transition: all 0.5s ease;
         }
-
-        /* 扫描线动画 */
-        .panel-frame::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: rgba(0, 255, 255, 0.5);
-            animation: scan 3s linear infinite;
-            opacity: 0.3;
-            pointer-events: none;
-        }
-
-        @keyframes scan {
-            0% { top: 0; opacity: 0; }
-            50% { opacity: 1; }
-            100% { top: 100%; opacity: 0; }
-        }
-
-        /* 文本样式 */
+        
         h1 {
-            color: #0ff;
-            font-size: 16px;
-            margin: 0 0 12px 0;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            text-shadow: 0 0 5px #0ff;
-            border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-            padding-bottom: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            color: #0ff; font-size: 16px; margin: 0 0 12px 0; text-transform: uppercase;
+            letter-spacing: 2px; text-shadow: 0 0 5px #0ff; border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+            padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center;
         }
+        .fps-badge { font-size: 12px; background: rgba(0, 255, 255, 0.2); padding: 2px 6px; border-radius: 2px; }
 
-        .fps-badge {
-            font-size: 12px;
-            background: rgba(0, 255, 255, 0.2);
-            padding: 2px 6px;
-            border-radius: 2px;
-        }
-
-        /* --- 交互式数据行 --- */
-        .control-section {
-            margin-bottom: 15px;
-            border-bottom: 1px dashed rgba(0,255,255,0.2);
-            padding-bottom: 10px;
-        }
+        /* 面板折叠按钮 */
+        .panel-toggle-btn { cursor: pointer; font-weight: bold; padding: 0 8px; user-select: none; }
         
+        /* --- 控件样式 --- */
+        .control-section { margin-bottom: 10px; border-bottom: 1px dashed rgba(0,255,255,0.2); padding-bottom: 5px; }
         .section-title {
-            color: #0ff;
-            font-size: 12px;
-            font-weight: bold;
-            margin-bottom: 8px;
-            opacity: 0.8;
+            color: #0ff; font-size: 12px; font-weight: bold; margin-bottom: 8px; opacity: 0.9;
+            cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(0, 255, 255, 0.05); padding: 4px; border-radius: 2px; transition: background 0.2s;
         }
+        .section-title:hover { background: rgba(0, 255, 255, 0.15); }
+        .section-title::after { content: '▼'; font-size: 10px; margin-left: 5px; transition: transform 0.3s; }
+        .control-section.collapsed .section-title::after { transform: rotate(-90deg); }
+        .section-content { max-height: 800px; overflow: hidden; transition: max-height 0.3s ease-out, opacity 0.3s ease-out; opacity: 1; }
+        .control-section.collapsed .section-content { max-height: 0; opacity: 0; }
 
-        .control-row {
-            margin-bottom: 8px;
-        }
-        
-        .control-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center; /* 垂直居中 */
-            color: rgba(0, 255, 255, 0.8);
-            font-size: 10px;
-            margin-bottom: 2px;
-        }
+        .control-row { margin-bottom: 8px; }
+        .control-header { display: flex; justify-content: space-between; align-items: center; color: rgba(0, 255, 255, 0.8); font-size: 10px; margin-bottom: 2px; }
+        .control-value { color: #fff; font-weight: bold; }
 
-        .control-value {
-            color: #fff;
-            font-weight: bold;
-        }
-
-        /* 刷新按钮样式 */
         .refresh-btn {
-            background: rgba(0, 0, 0, 0.5);
-            border: 1px solid #0ff;
-            color: #0ff;
-            border-radius: 50%;
-            width: 16px;
-            height: 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            font-size: 10px;
-            margin-left: 6px;
-            transition: all 0.2s;
+            background: rgba(0, 0, 0, 0.5); border: 1px solid #0ff; color: #0ff;
+            border-radius: 50%; width: 16px; height: 16px; display: flex;
+            justify-content: center; align-items: center; cursor: pointer; font-size: 10px; margin-left: 6px; transition: all 0.2s;
         }
-        .refresh-btn:hover {
-            background: #0ff;
-            color: #000;
-            transform: rotate(180deg);
-        }
+        .refresh-btn:hover { background: #0ff; color: #000; transform: rotate(180deg); }
 
-        /* 科幻滑块样式 */
-        input[type=range] {
-            -webkit-appearance: none;
-            width: 100%;
-            background: transparent;
-            margin: 0;
+        .toggle-switch {
+            position: relative; width: 30px; height: 14px; background: rgba(0, 255, 255, 0.2);
+            border-radius: 7px; cursor: pointer; border: 1px solid rgba(0, 255, 255, 0.4);
         }
+        .toggle-switch::after {
+            content: ''; position: absolute; left: 1px; top: 1px; width: 10px; height: 10px;
+            background: #0ff; border-radius: 50%; transition: all 0.3s; box-shadow: 0 0 5px #0ff;
+        }
+        .toggle-switch.active { background: rgba(0, 255, 255, 0.5); }
+        .toggle-switch.active::after { left: 17px; background: #fff; }
 
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin: 0; }
         input[type=range]:focus { outline: none; }
-
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 4px;
-            cursor: pointer;
-            background: rgba(0, 255, 255, 0.2);
-            border: 1px solid rgba(0, 255, 255, 0.4);
-            border-radius: 0;
-        }
-
-        input[type=range]::-webkit-slider-thumb {
-            height: 12px;
-            width: 8px;
-            border: 1px solid #0ff;
-            background: #000;
-            cursor: pointer;
-            -webkit-appearance: none;
-            margin-top: -5px;
-            box-shadow: 0 0 5px #0ff;
-            transition: background 0.2s;
-        }
-
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(0, 255, 255, 0.2); border: 1px solid rgba(0, 255, 255, 0.4); }
+        input[type=range]::-webkit-slider-thumb { height: 12px; width: 8px; border: 1px solid #0ff; background: #000; cursor: pointer; -webkit-appearance: none; margin-top: -5px; box-shadow: 0 0 5px #0ff; transition: background 0.2s; }
         input[type=range]::-webkit-slider-thumb:hover { background: #0ff; }
 
-        /* RGB 滑块特定颜色 */
-        .slider-red::-webkit-slider-runnable-track { background: rgba(255, 0, 0, 0.3); border-color: rgba(255,0,0,0.5); }
+        .slider-red::-webkit-slider-runnable-track { background: rgba(255,0,0,0.3); border-color: rgba(255,0,0,0.5); }
         .slider-red::-webkit-slider-thumb { border-color: #f00; box-shadow: 0 0 5px #f00; }
-        
-        .slider-green::-webkit-slider-runnable-track { background: rgba(0, 255, 0, 0.3); border-color: rgba(0,255,0,0.5); }
+        .slider-green::-webkit-slider-runnable-track { background: rgba(0,255,0,0.3); border-color: rgba(0,255,0,0.5); }
         .slider-green::-webkit-slider-thumb { border-color: #0f0; box-shadow: 0 0 5px #0f0; }
-
-        .slider-blue::-webkit-slider-runnable-track { background: rgba(0, 0, 255, 0.3); border-color: rgba(0,0,255,0.5); }
+        .slider-blue::-webkit-slider-runnable-track { background: rgba(0,0,255,0.3); border-color: rgba(0,0,255,0.5); }
         .slider-blue::-webkit-slider-thumb { border-color: #00f; box-shadow: 0 0 5px #00f; }
 
-        /* --- AI 终端样式 --- */
-        .terminal-input-group {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 5px;
-        }
+        .math-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+        .math-tag { font-size: 9px; color: rgba(0,255,255,0.7); border: 1px solid rgba(0,255,255,0.3); padding: 4px 8px; cursor: pointer; transition: all 0.2s; background: rgba(0,0,0,0.3); user-select: none; text-transform: uppercase; flex-grow: 1; text-align: center; }
+        .math-tag:hover { background: rgba(0,255,255,0.2); border-color: #0ff; color: #fff; }
+        .math-tag.selected { background: rgba(0, 255, 255, 0.6); color: #000; border-color: #fff; }
+        .tag-category { width: 100%; font-size: 9px; color: #0ff; margin: 5px 0 2px 0; opacity: 0.7; border-bottom: 1px solid rgba(0,255,255,0.2); }
+        body.light-mode .tag-category { color: #555; border-color: #999; }
 
-        #ai-input {
-            background: rgba(0, 0, 0, 0.5);
-            border: 1px solid #0ff;
-            color: #0ff;
-            font-family: inherit;
-            font-size: 12px;
-            padding: 8px;
-            width: 100%;
-            outline: none;
-        }
+        .ai-log { font-size: 10px; color: #0f0; height: 50px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 5px; border: 1px solid rgba(0,255,0,0.2); white-space: pre-wrap; line-height: 1.4; transition: all 0.3s; }
+
+        /* 音乐 & 可视化样式 */
+        .sci-fi-file-input { font-size: 10px; color: rgba(0, 255, 255, 0.8); width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px dashed rgba(0, 255, 255, 0.3); padding: 5px; cursor: pointer; }
+        .sci-fi-btn-small { background: rgba(0, 0, 0, 0.5); border: 1px solid #0ff; color: #0ff; padding: 4px 12px; font-family: inherit; font-size: 10px; cursor: pointer; transition: all 0.2s; flex-shrink: 0; }
+        .sci-fi-btn-small:hover { background: #0ff; color: #000; }
+        .sci-fi-btn-small.active { background: #0ff; color: #000; box-shadow: 0 0 10px #0ff; }
         
-        #ai-input::placeholder { color: rgba(0, 255, 255, 0.3); }
-
-        #ai-btn {
-            background: rgba(0, 255, 255, 0.2);
-            border: 1px solid #0ff;
-            color: #0ff;
-            cursor: pointer;
-            font-weight: bold;
-            padding: 0 10px;
-            font-size: 16px;
-            transition: all 0.2s;
-        }
-
-        #ai-btn:hover { background: #0ff; color: #000; box-shadow: 0 0 10px #0ff; }
-        #ai-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); }
-
-        /* AI 快捷标签 */
-        .preset-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-            margin-bottom: 10px;
-        }
+        .viz-canvas { width: 100%; height: 40px; background: rgba(0, 20, 40, 0.5); border: 1px solid rgba(0, 255, 255, 0.2); margin-top: 5px; display: block; }
         
-        .preset-tag {
-            font-size: 10px;
-            color: rgba(0,255,255,0.7);
-            border: 1px solid rgba(0,255,255,0.3);
-            padding: 2px 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-            background: rgba(0,0,0,0.3);
-        }
+        .mod-bar-container { margin-top: 4px; width: 100%; height: 4px; background: rgba(0,255,255,0.1); position: relative; }
+        .mod-bar { height: 100%; background: #0ff; width: 0%; transition: width 0.1s; box-shadow: 0 0 5px #0ff; }
 
-        .preset-tag:hover {
-            background: rgba(0,255,255,0.2);
-            color: #fff;
-            border-color: #0ff;
-        }
-
-        .ai-log {
-            font-size: 10px;
-            color: #0f0;
-            height: 50px;
-            overflow-y: auto;
-            background: rgba(0,0,0,0.3);
-            padding: 5px;
-            border: 1px solid rgba(0,255,0,0.2);
-            white-space: pre-wrap;
-            line-height: 1.4;
-        }
-
-        .ai-log::-webkit-scrollbar { width: 4px; }
-        .ai-log::-webkit-scrollbar-track { background: #000; }
-        .ai-log::-webkit-scrollbar-thumb { background: #0ff; }
-
-        /* --- 底部控制按钮 --- */
-        #controls {
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 15px;
-            z-index: 10;
-        }
-
-        .sci-fi-btn {
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid #0ff;
-            color: #0ff;
-            padding: 10px 20px;
-            font-family: inherit;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .sci-fi-btn:hover {
-            background: rgba(0, 255, 255, 0.2);
-            box-shadow: 0 0 15px #0ff;
-            text-shadow: 0 0 8px #0ff;
-        }
-
-        .sci-fi-btn.active {
-            background: #0ff;
-            color: #000;
-            box-shadow: 0 0 20px #0ff;
-            font-weight: bold;
-        }
-
-        .corner-decoration {
-            position: absolute;
-            width: 8px;
-            height: 8px;
-            border: 1px solid #0ff;
-            transition: all 0.3s;
-        }
-        .tl { top: -1px; left: -1px; border-bottom: none; border-right: none; }
-        .tr { top: -1px; right: -1px; border-bottom: none; border-left: none; }
-        .bl { bottom: -1px; left: -1px; border-top: none; border-right: none; }
-        .br { bottom: -1px; right: -1px; border-top: none; border-left: none; }
-
-        /* 加载遮罩 */
-        #loader {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            color: #0ff;
-            z-index: 100;
-            flex-direction: column;
-        }
-        .loader-bar {
-            width: 200px;
-            height: 2px;
-            background: #333;
-            margin-top: 10px;
-            position: relative;
-        }
-        .loader-progress {
-            position: absolute;
-            left: 0; top: 0; height: 100%;
-            background: #0ff;
-            width: 0%;
-            transition: width 0.2s;
-            box-shadow: 0 0 10px #0ff;
+        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; justify-content: center; align-items: center; color: #0ff; z-index: 100; flex-direction: column; }
+        .loader-bar { width: 200px; height: 2px; background: #333; margin-top: 10px; position: relative; }
+        .loader-progress { position: absolute; left: 0; top: 0; height: 100%; background: #0ff; width: 0%; transition: width 0.2s; box-shadow: 0 0 10px #0ff; }
+        
+        #gesture-hint {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #0ff; font-size: 14px; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+            text-shadow: 0 0 10px #0ff; border: 1px solid #0ff; padding: 10px; background: rgba(0,0,0,0.7);
+            z-index: 20; text-align: center;
         }
     </style>
-    <!-- 引入 Three.js 和 Tween.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
 </head>
 <body>
 
-    <!-- 加载动画 -->
     <div id="loader">
-        <div>INITIALIZING CORE SYSTEMS...</div>
+        <div>INITIALIZING MORPH CORE...</div>
         <div class="loader-bar"><div class="loader-progress" id="progress"></div></div>
     </div>
     
-    <!-- 全息数据面板 -->
+    <div id="gesture-hint">
+        <div>XY MODULATION ACTIVE</div>
+        <div style="font-size:10px; color:#aaa;">X: FILTER | Y: RIPPLE | TAP: TOGGLE PINCH</div>
+    </div>
+    
     <div id="hologram-ui">
         <div class="panel-frame">
             <h1>
                 SYSTEM STATUS
-                <span class="fps-badge"><span id="fps-counter">60</span> FPS</span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="fps-badge"><span id="fps-counter">60</span> FPS</span>
+                    <div class="panel-toggle-btn" onclick="toggleMainPanel(this)">[ - ]</div>
+                </div>
             </h1>
             
-            <!-- 模拟控制模块 -->
+            <!-- 风格与材质 (ID: style-section-content) -->
             <div class="control-section">
-                <div class="section-title">>> SIMULATION CORE</div>
-                <div class="control-row">
-                    <div class="control-header">
-                        <span>PARTICLE DENSITY</span>
-                        <span class="control-value" id="particle-val">20,000</span>
+                <div class="section-title" onclick="toggleSection(this)">>> VISUAL STYLE & MATERIAL</div>
+                <div class="section-content" id="style-section-content">
+                    <div class="tag-category">RENDER STYLE (ENV) [TAB]</div>
+                    <div class="math-tags style-group">
+                        <div class="math-tag selected" onclick="setRenderStyle('Universe', this)">Universe</div>
+                        <div class="math-tag" onclick="setRenderStyle('Ink', this)">Chinese Ink</div>
+                        <div class="math-tag" onclick="setRenderStyle('Oil', this)">Van Gogh Oil</div>
+                        <div class="math-tag" onclick="setRenderStyle('Sketch', this)">Sketch</div>
                     </div>
-                    <input type="range" id="particle-slider" min="5000" max="50000" step="1000" value="20000">
-                </div>
+                    <div class="tag-category">ELEMENTAL REALMS (NATURE)</div>
+                    <div class="math-tags style-group">
+                        <div class="math-tag" onclick="setRenderStyle('Forest', this)">Forest</div>
+                        <div class="math-tag" onclick="setRenderStyle('Ocean', this)">Ocean</div>
+                        <div class="math-tag" onclick="setRenderStyle('Fire', this)">Fire</div>
+                        <div class="math-tag" onclick="setRenderStyle('Cell', this)">Micro-Cell</div>
+                    </div>
 
-                <div class="control-row">
-                    <div class="control-header">
-                        <span>TIME DILATION</span>
-                        <span class="control-value" id="speed-val">1.0x</span>
+                    <div class="tag-category">MATERIAL EFFECT (PARTICLES) [SPACE]</div>
+                    <div class="math-tags material-group">
+                        <div class="math-tag selected" onclick="setMaterialEffect('Particle', this)">Default</div>
+                        <div class="math-tag" onclick="setMaterialEffect('Glass', this)">Glass</div>
+                        <div class="math-tag" onclick="setMaterialEffect('Plant', this)">Plant</div>
+                        <div class="math-tag" onclick="setMaterialEffect('Silk', this)">Silk</div>
+                        <div class="math-tag" onclick="setMaterialEffect('Metal', this)">Metal</div>
+                        <div class="math-tag" onclick="setMaterialEffect('Rock', this)">Rock</div>
                     </div>
-                    <input type="range" id="speed-slider" min="0" max="3" step="0.1" value="1.0">
-                </div>
-
-                <div class="control-row">
-                    <div class="control-header">
-                        <span>FIELD STABILITY</span>
-                        <span class="control-value" id="stability-val" style="color: #0f0;">100%</span>
-                    </div>
-                    <input type="range" id="stability-slider" min="0" max="100" step="1" value="100">
                 </div>
             </div>
 
-            <!-- 外观控制模块 (新) -->
+            <!-- 模拟控制 -->
             <div class="control-section">
-                <div class="section-title">>> PARTICLE APPEARANCE</div>
-                
-                <div class="control-row">
-                    <div class="control-header">
-                        <span>PARTICLE SIZE</span>
-                        <span class="control-value" id="size-val">6.0</span>
+                <div class="section-title" onclick="toggleSection(this)">>> SIMULATION CORE</div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <div class="control-header"><span>PARTICLE DENSITY</span><span class="control-value" id="particle-val">20,000</span></div>
+                        <input type="range" id="particle-slider" min="5000" max="40000" step="1000" value="20000">
                     </div>
-                    <input type="range" id="size-slider" min="1" max="20" step="0.1" value="6.0">
-                </div>
-
-                <!-- RGB 调色板 -->
-                <div class="control-row">
-                    <div class="control-header">
-                        <span>SPECTRAL FILTER (RGB)</span>
-                        <span class="control-value" id="rgb-val">255, 255, 255</span>
+                    <div class="control-row">
+                        <div class="control-header"><span>TIME DILATION</span><span class="control-value" id="speed-val">1.0x</span></div>
+                        <input type="range" id="speed-slider" min="0" max="3" step="0.1" value="1.0">
                     </div>
-                    <!-- R -->
-                    <input type="range" class="slider-red" id="slider-r" min="0" max="255" value="255" style="margin-bottom: 4px;">
-                    <!-- G -->
-                    <input type="range" class="slider-green" id="slider-g" min="0" max="255" value="255" style="margin-bottom: 4px;">
-                    <!-- B -->
-                    <input type="range" class="slider-blue" id="slider-b" min="0" max="255" value="255">
+                     <div class="control-row">
+                        <div class="control-header"><span>MORPH SPEED (LERP)</span><span class="control-value" id="morph-val">0.05</span></div>
+                        <input type="range" id="morph-slider" min="0.01" max="0.2" step="0.01" value="0.05">
+                    </div>
                 </div>
+            </div>
 
-                <!-- 神经树连线 (更新：带刷新按钮) -->
-                <div class="control-row">
-                    <div class="control-header">
-                        <span>NEURAL DENSITY (LINES)</span>
-                        <div style="display:flex; align-items:center;">
-                            <span class="control-value" id="neural-val" style="margin-right:5px;">0%</span>
-                            <div class="refresh-btn" id="btn-refresh-lines" title="Randomize Connections">↻</div>
+            <!-- 动态控制 -->
+            <div class="control-section collapsed">
+                <div class="section-title" onclick="toggleSection(this)">>> DYNAMICS & MOTION</div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <div class="control-header"><span>AUTO ROTATION</span><div class="toggle-switch active" id="toggle-rotate"></div></div>
+                    </div>
+                    <div class="control-row">
+                        <div class="control-header"><span>PULSE INTENSITY</span><span class="control-value" id="pulse-val">0.0</span></div>
+                        <input type="range" id="pulse-slider" min="0" max="1" step="0.01" value="0">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 音乐控制模块 -->
+            <div class="control-section collapsed">
+                <div class="section-title" onclick="toggleSection(this)">>> SONIC RESONANCE FIELD</div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <div class="control-header"><span>AUDIO SOURCE</span></div>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <!-- 修复：明确指定 .mp3 扩展名，以兼容部分移动端文件选择器 -->
+                            <input type="file" id="audio-file" accept=".mp3,audio/*" class="sci-fi-file-input">
+                        </div>
+                        <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; border-top:1px dashed rgba(0,255,255,0.2); padding-top:5px;">
+                            <div style="display:flex; flex-direction:column;">
+                                <span style="font-size:9px; color:#0ff;">EXT. SOURCE DETECT</span>
+                                <span id="ext-status" style="font-size:8px; color:#aaa; margin-top:2px;">OFFLINE</span>
+                            </div>
+                            <div class="toggle-switch" id="ext-audio-toggle"></div>
                         </div>
                     </div>
-                    <input type="range" id="neural-slider" min="0" max="100" step="1" value="0">
-                </div>
-
-                <!-- 形状变形 -->
-                <div class="control-row">
-                    <div class="control-header">
-                        <span>SHAPE MORPH</span>
-                        <span class="control-value" id="shape-val">Glow</span>
+                    <div class="control-row" style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                        <button id="audio-play-btn" class="sci-fi-btn-small">PLAY</button>
+                        <button id="file-gesture-btn" class="sci-fi-btn-small" title="Pinch Music (XY Pad)">XY MOD</button>
+                        <div style="flex:1">
+                            <div class="control-header" style="margin-bottom:0;"><span>VOL</span></div>
+                            <input type="range" id="audio-volume" min="0" max="1" step="0.01" value="0.5">
+                        </div>
                     </div>
-                    <input type="range" id="shape-slider" min="0" max="3" step="0.01" value="0">
+                    
+                    <div class="control-row" style="margin-top:10px;">
+                        <div class="control-header"><span>BASS SENSITIVITY</span><span class="control-value" id="bass-sens-val">1.0</span></div>
+                        <input type="range" id="bass-sens-slider" min="0" max="3" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-row">
+                        <div class="control-header"><span>TREBLE SENSITIVITY</span><span class="control-value" id="treble-sens-val">1.0</span></div>
+                        <input type="range" id="treble-sens-slider" min="0" max="3" step="0.1" value="1.0">
+                    </div>
+
+                    <div class="control-row" style="margin-top:10px;">
+                        <div class="control-header"><span>MODULATION MONITOR (X/Y)</span></div>
+                        <div class="control-header" style="font-size:9px; color:#aaa;">CUTOFF / BRIGHTNESS (X)</div>
+                        <div class="mod-bar-container"><div id="mod-cutoff-bar" class="mod-bar"></div></div>
+                        <div class="control-header" style="font-size:9px; color:#aaa; margin-top:4px;">RES / RIPPLE (Y)</div>
+                        <div class="mod-bar-container"><div id="mod-res-bar" class="mod-bar" style="background:#ff0; box-shadow:0 0 5px #ff0;"></div></div>
+                    </div>
+
+                    <canvas id="file-visualizer" class="viz-canvas" width="340" height="40"></canvas>
+                </div>
+            </div>
+
+            <!-- 外观控制 -->
+            <div class="control-section collapsed">
+                <div class="section-title" onclick="toggleSection(this)">>> FINE TUNING</div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <div class="control-header"><span>COLOR CYCLE (TIME)</span><div class="toggle-switch" id="toggle-auto-color"></div></div>
+                    </div>
+                    <div class="control-row">
+                        <div class="control-header"><span>PARTICLE SIZE</span><span class="control-value" id="size-val">6.0</span></div>
+                        <input type="range" id="size-slider" min="1" max="20" step="0.1" value="6.0">
+                    </div>
+                    <div class="control-row">
+                        <div class="control-header"><span>SPECTRAL FILTER (RGB)</span><span class="control-value" id="rgb-val">255, 255, 255</span></div>
+                        <input type="range" class="slider-red" id="slider-r" min="0" max="255" value="255" style="margin-bottom:4px;">
+                        <input type="range" class="slider-green" id="slider-g" min="0" max="255" value="255" style="margin-bottom:4px;">
+                        <input type="range" class="slider-blue" id="slider-b" min="0" max="255" value="255">
+                    </div>
+                    <div class="control-row">
+                        <div class="control-header">
+                            <span>NEURAL DENSITY (LINES)</span>
+                            <div style="display:flex; align-items:center;">
+                                <span class="control-value" id="neural-val" style="margin-right:5px;">0%</span>
+                                <div class="refresh-btn" id="btn-refresh-lines" title="Randomize Connections">↻</div>
+                            </div>
+                        </div>
+                        <input type="range" id="neural-slider" min="0" max="100" step="1" value="0">
+                    </div>
                 </div>
             </div>
             
-            <!-- AI 终端区域 (本地过程化生成) -->
+            <!-- 数学模型面板 (ID: shape-section-content) -->
             <div class="control-section" style="border:none; margin-bottom:0;">
-                <div class="section-title">>> DIMENSIONAL RECONSTRUCTOR</div>
-                <div class="terminal-input-group">
-                    <input type="text" id="ai-input" placeholder="Input shape (e.g. Galaxy, Cube)..." onkeydown="if(event.key==='Enter') triggerAI()">
-                    <button id="ai-btn" onclick="triggerAI()">✨</button>
-                </div>
-                
-                <!-- 快捷预设 -->
-                <div class="preset-tags">
-                    <div class="preset-tag" onclick="usePreset('Spiral Galaxy')">Galaxy</div>
-                    <div class="preset-tag" onclick="usePreset('DNA Double Helix')">DNA</div>
-                    <div class="preset-tag" onclick="usePreset('Tornado Storm')">Tornado</div>
-                    <div class="preset-tag" onclick="usePreset('Pyramid Grid')">Pyramid</div>
-                    <div class="preset-tag" onclick="usePreset('Atomic Structure')">Atom</div>
-                    <div class="preset-tag" onclick="usePreset('Cube Matrix')">Matrix</div>
-                </div>
+                <div class="section-title" onclick="toggleSection(this)">>> DIMENSIONAL RECONSTRUCTOR</div>
+                <div class="section-content" id="shape-section-content">
+                    <div class="tag-category">GEOMETRY</div>
+                    <div class="math-tags">
+                        <div class="math-tag selected" onclick="selectShape('Universe')">Universe</div>
+                        <div class="math-tag" onclick="selectShape('Heart')">Heart</div>
+                        <div class="math-tag" onclick="selectShape('Mobius')">Mobius</div>
+                        <div class="math-tag" onclick="selectShape('Penrose')">Penrose</div>
+                        <div class="math-tag" onclick="selectShape('Tornado')">Tornado</div>
+                    </div>
+                    
+                    <div class="tag-category">ORGANIC & LIFE</div>
+                    <div class="math-tags">
+                        <div class="math-tag" onclick="selectShape('Rose')">Rose</div>
+                        <div class="math-tag" onclick="selectShape('Nautilus')">Nautilus</div>
+                        <div class="math-tag" onclick="selectShape('Lily')">Lily</div>
+                        <div class="math-tag" onclick="selectShape('Lotus')">Lotus</div>
+                        <div class="math-tag" onclick="selectShape('Fern')">Fern</div>
+                        <div class="math-tag" onclick="selectShape('Butterfly')">Butterfly</div>
+                        <div class="math-tag" onclick="selectShape('Jellyfish')">Jellyfish</div>
+                    </div>
 
-                <div class="ai-log" id="ai-log">
-                    [SYSTEM] Quantum field ready.
-                    [INFO] Use sliders to tint particle spectrum.
+                    <div class="tag-category">CHAOS ATTRACTORS</div>
+                    <div class="math-tags">
+                        <div class="math-tag" onclick="selectShape('Lorenz')">Lorenz</div>
+                        <div class="math-tag" onclick="selectShape('Rössler')">Rössler</div>
+                        <div class="math-tag" onclick="selectShape('Chen')">Chen</div>
+                        <div class="math-tag" onclick="selectShape('Aizawa')">Aizawa</div>
+                        <div class="math-tag" onclick="selectShape('Dadras')">Dadras</div>
+                    </div>
+
+                    <div class="tag-category">FRACTALS & STRUCTURES</div>
+                    <div class="math-tags">
+                        <div class="math-tag" onclick="selectShape('Sierpinski')">Sierpinski</div>
+                        <div class="math-tag" onclick="selectShape('Mandelbulb')">Mandelbulb</div>
+                        <div class="math-tag" onclick="selectShape('Menger')">Menger</div>
+                        <div class="math-tag" onclick="selectShape('Julia')">Julia</div>
+                        <div class="math-tag" onclick="selectShape('Clifford')">Clifford</div>
+                        <div class="math-tag" onclick="selectShape('DNA')">DNA</div>
+                        <div class="math-tag" onclick="selectShape('Atom')">Atom</div>
+                    </div>
+
+                    <div class="ai-log" id="ai-log">
+                        [SYSTEM] Morph Core loaded.
+                        [INFO] Style Engine Ready.
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 底部形状切换 -->
-    <div id="controls">
-        <button class="sci-fi-btn active" onclick="transformTo('universe')">
-            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
-            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
-            Universe
-        </button>
-        <button class="sci-fi-btn" onclick="transformTo('heart')">
-            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
-            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
-            Heart
-        </button>
-        <button class="sci-fi-btn" onclick="transformTo('mobius')">
-            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
-            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
-            Möbius
-        </button>
-        <button class="sci-fi-btn" onclick="transformTo('fractal')">
-            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
-            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
-            Fractal
-        </button>
-        <button class="sci-fi-btn" onclick="transformTo('penrose')">
-            <div class="corner-decoration tl"></div><div class="corner-decoration tr"></div>
-            <div class="corner-decoration bl"></div><div class="corner-decoration br"></div>
-            Penrose
-        </button>
-    </div>
-
     <script>
-        // --- 变量声明 ---
+        // --- 3D Variables ---
         let scene, camera, renderer;
-        let particles, geometry, material;
-        let linesMesh, linesGeometry; // 连线网格
+        let particles, geometry, material, cursorMaterial;
+        let linesMesh, linesGeometry;
+        let connections = [];
         let particleCount = 20000;
-        const maxLines = 10000; // 增加最大连线数以支持“满连接”
+        const maxLines = 10000;
         
-        // 控制变量
+        // Morphing Variables
+        let currentPositions = new Float32Array();
+        let targetPositions = new Float32Array();
+        let currentColors = new Float32Array();
+        let targetColors = new Float32Array();
+        let isMorphing = false;
+        let morphSpeed = 0.05;
+
+        // Cursor Meteor Variables
+        let cursorHead, cursorTrail;
+        let trailPositions = [];
+        const TRAIL_LENGTH = 30;
+        const raycaster = new THREE.Raycaster();
+        const mousePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); 
+        const mouseVector = new THREE.Vector2();
+        const worldMouse = new THREE.Vector3();
+        let isCursorInPanel = false;
+
+        // --- Control Variables ---
         let simSpeed = 1.0;
-        let stability = 1.0;
         let particleSize = 6.0;
-        let neuralDensity = 0; // 0-100
-        let shapeMorph = 0.0; // 0.0-3.0
-        let lineSeed = 0; // 连线随机种子
-        
-        // 颜色控制
-        let colorR = 1, colorG = 1, colorB = 1; // 0-1 normalized
-
+        let neuralDensity = 0;
+        let autoRotate = true;
+        let pulseIntensity = 0.0;
+        let colorR = 1, colorG = 1, colorB = 1;
         let currentShape = 'universe';
-        let customShapeCode = null;
+        let autoColorCycle = false;
         
-        // 动画相关
-        const transitionParams = { val: 1 };
-        let currentTween = null;
+        // Touch/Gesture State
+        let lastTap = 0;
+        let touchStartTimes = {};
+        let isMouseDown = false; // Controls Force Field / Pinch State
 
-        // 性能监控
+        // --- Styles & Effects Lists ---
+        const styleList = ['Universe', 'Ink', 'Oil', 'Sketch', 'Forest', 'Ocean', 'Fire', 'Cell'];
+        const materialList = ['Particle', 'Glass', 'Plant', 'Silk', 'Metal', 'Rock'];
+
+        let currentStyle = 'Universe';
+        let currentEffect = 0;
+
+        // --- Audio Settings ---
+        let bassSensitivity = 1.0;
+        let trebleSensitivity = 1.0;
+        let isGestureActive = false;
+        let isPinching = false;
+        let normMouseX = 0.5, normMouseY = 0.0; 
+        let hintTimeout;
+
+        // --- Audio: File Player & Mic Variables ---
+        let fileAudioCtx, fileAnalyser, fileSource;
+        let fileGainNode, fileFilterNode, fileDistortionNode; 
+        let isFilePlaying = false;
+        let fileFreqData, fileTimeData;
+        const fileVizCanvas = document.getElementById('file-visualizer');
+        const fileVizCtx = fileVizCanvas.getContext('2d');
+
+        // Live Mic Variables
+        let isMicActive = false;
+        let micStream = null;
+        let micSource = null;
+
         let lastTime = performance.now();
         let frames = 0;
         const fpsCounter = document.getElementById('fps-counter');
-
-        // 鼠标交互
-        let mouseX = 0;
-        let mouseY = 0;
+        let mouseX = 0, mouseY = 0;
         let windowHalfX = window.innerWidth / 2;
         let windowHalfY = window.innerHeight / 2;
         
-        // 辅助随机函数
         const rand = (min, max) => Math.random() * (max - min) + min;
 
-        // 着色器代码 (实现形状平滑变形)
+        // --- MATHEMATICAL GENERATORS ---
+        function generateAttractor(odeFunc, scale, steps, dt) {
+            const arr = [];
+            let x = 0.1, y = 0.1, z = 0.1; 
+            for(let i=0; i<100; i++) { const d = odeFunc(x,y,z); x+=d.x*dt; y+=d.y*dt; z+=d.z*dt; }
+            for(let i=0; i<particleCount; i++) {
+                const d = odeFunc(x,y,z); x += d.x * dt; y += d.y * dt; z += d.z * dt;
+                const noise = 0.5;
+                arr.push(x * scale + (Math.random()-0.5)*noise, y * scale + (Math.random()-0.5)*noise, z * scale + (Math.random()-0.5)*noise);
+            }
+            return arr;
+        }
+
+        // Improved Generator wrapper for stiff systems
+        function generateStiffAttractor(odeFunc, scale, dt, microSteps=1) {
+            const arr = [];
+            let x = 0.1, y = 0.1, z = 0.1;
+            for(let i=0; i<100*microSteps; i++) {
+                const d = odeFunc(x,y,z);
+                x += d.x * dt; y += d.y * dt; z += d.z * dt;
+            }
+            for(let i=0; i<particleCount; i++) {
+                for(let j=0; j<microSteps; j++) {
+                    const d = odeFunc(x,y,z);
+                    x += d.x * dt; y += d.y * dt; z += d.z * dt;
+                }
+                if (isNaN(x) || Math.abs(x)>1000) { x=0.1; y=0.1; z=0.1; } 
+                const noise = 0.5;
+                arr.push(x * scale + (Math.random()-0.5)*noise, y * scale + (Math.random()-0.5)*noise, z * scale + (Math.random()-0.5)*noise);
+            }
+            return arr;
+        }
+
+        function getLorenz() { const sigma=10, rho=28, beta=8/3; return generateAttractor((x,y,z)=>({x:sigma*(y-x),y:x*(rho-z)-y,z:x*y-beta*z}), 15, particleCount, 0.005); }
+        function getAizawa() { const a=0.95, b=0.7, c=0.6, d=3.5, e=0.25, f=0.1; return generateAttractor((x,y,z)=>({x:(z-b)*x-d*y,y:d*x+(z-b)*y,z:c+a*z-z*z*z/3-(x*x+y*y)*(1+e*z)+f*z*x*x*x}), 150, particleCount, 0.01); }
+        function getDadras() { const p=3, q=2.7, r=1.7, s=2, e=9; return generateAttractor((x,y,z)=>({x:y-p*x+q*y*z,y:r*y-x*z+z,z:s*x*y-e*z}), 40, particleCount, 0.005); }
+        
+        function getRossler() {
+            const a=0.2, b=0.2, c=5.7;
+            return generateAttractor((x,y,z) => ({
+                x: -y - z,
+                y: x + a*y,
+                z: b + z*(x - c)
+            }), 20, particleCount, 0.025);
+        }
+        
+        function getChen() {
+            const a=35, b=3, c=28;
+            return generateStiffAttractor((x,y,z) => ({
+                x: a*(y - x),
+                y: (c - a)*x - x*z + c*y,
+                z: x*y - b*z
+            }), 15, 0.002, 2);
+        }
+
+        function getMenger() {
+            const arr = [];
+            const size = 600; 
+            let count = 0;
+            const maxAttempts = particleCount * 50; 
+            let attempts = 0;
+            while (count < particleCount && attempts < maxAttempts) {
+                attempts++;
+                const x = (Math.random() - 0.5) * size;
+                const y = (Math.random() - 0.5) * size;
+                const z = (Math.random() - 0.5) * size;
+                let isHole = false;
+                let cx = x + size/2;
+                let cy = y + size/2;
+                let cz = z + size/2;
+                let s = size;
+                for (let i = 0; i < 4; i++) {
+                    s /= 3;
+                    const dx = Math.floor(cx / s) % 3;
+                    const dy = Math.floor(cy / s) % 3;
+                    const dz = Math.floor(cz / s) % 3;
+                    const ones = (dx === 1 ? 1 : 0) + (dy === 1 ? 1 : 0) + (dz === 1 ? 1 : 0);
+                    if (ones >= 2) { isHole = true; break; }
+                }
+                if (!isHole) { arr.push(x, y, z); count++; }
+            }
+            return arr;
+        }
+
+        function getJulia() {
+            const arr = [];
+            const c = { w: -0.2, x: 0.6, y: 0.2, z: 0.2 }; 
+            const maxIter = 8;
+            const bound = 1.5;
+            const scale = 300;
+            let i = 0;
+            while(i < particleCount) {
+                let x = (Math.random() * 2 - 1) * bound;
+                let y = (Math.random() * 2 - 1) * bound;
+                let z = (Math.random() * 2 - 1) * bound;
+                let w = (Math.random() * 2 - 1) * bound;
+                let escaped = false;
+                let j = 0;
+                let qx=x, qy=y, qz=z, qw=w;
+                for(j=0; j<maxIter; j++) {
+                    let nw = qw*qw - qx*qx - qy*qy - qz*qz + c.w;
+                    let nx = 2*qw*qx + c.x;
+                    let ny = 2*qw*qy + c.y;
+                    let nz = 2*qw*qz + c.z;
+                    qw=nw; qx=nx; qy=ny; qz=nz;
+                    if(qw*qw+qx*qx+qy*qy+qz*qz > 4) { escaped = true; break; }
+                }
+                if(!escaped) { arr.push(x*scale, y*scale, z*scale); i++; }
+            }
+            return arr;
+        }
+
+        function getClifford() {
+            const arr = [];
+            const scale = 300;
+            for(let i=0; i<particleCount; i++) {
+                const u = Math.random() * Math.PI * 2;
+                const v = Math.random() * Math.PI * 2;
+                const p1 = Math.cos(u);
+                const p2 = Math.sin(u);
+                const p3 = Math.cos(v);
+                const p4 = Math.sin(v);
+                const x = p1 / (1 - p4 * 0.5);
+                const y = p2 / (1 - p4 * 0.5);
+                const z = p3 / (1 - p4 * 0.5);
+                arr.push(x*scale, y*scale, z*scale);
+            }
+            return arr;
+        }
+
+        function getSierpinski() {
+            const arr = []; const corners=[{x:400,y:-300,z:400},{x:-400,y:-300,z:400},{x:0,y:-300,z:-400},{x:0,y:400,z:0}];
+            let cx=0,cy=0,cz=0;
+            for(let i=0; i<particleCount; i++) {
+                const t=corners[Math.floor(Math.random()*4)]; cx=(cx+t.x)/2; cy=(cy+t.y)/2; cz=(cz+t.z)/2;
+                arr.push(cx+(Math.random()-0.5)*5, cy+(Math.random()-0.5)*5, cz+(Math.random()-0.5)*5);
+            }
+            return arr;
+        }
+
+        function getMandelbulb() {
+            const arr=[]; for(let i=0;i<particleCount;i++){
+                const t=Math.random()*Math.PI*2; const p=Math.acos(2*Math.random()-1); const r=400*Math.pow(Math.random(),1/3); 
+                const s=1+0.5*Math.sin(t*8)*Math.cos(p*8);
+                arr.push(r*Math.sin(p)*Math.cos(t)*s, r*Math.sin(p)*Math.sin(t)*s, r*Math.cos(p)*s);
+            }
+            return arr;
+        }
+
+        function getUniverse() { const arr=[]; const arms=5; const spin=0.2; const spread=1.0; for(let i=0;i<particleCount;i++){ const t=Math.random(); const angle=t*Math.PI*2*arms*spin+((i%arms)*Math.PI*2/arms); const r=800*t+50; const nX=(Math.random()-0.5)*200*t*spread; const nY=(Math.random()-0.5)*200*t*spread; const nZ=(Math.random()-0.5)*150*(1-t); arr.push(Math.cos(angle)*r+nX, Math.sin(angle)*r+nY, nZ); } return arr; }
+        function getHeart() { const arr=[]; for(let i=0;i<particleCount;i++){ const t=Math.random()*Math.PI*2; let x=16*Math.pow(Math.sin(t),3); let y=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t); let z=(Math.random()-0.5)*10; const s=25; const r=s*(Math.random()*0.2+0.8); arr.push(x*r, y*r, z*s*4*Math.random()); } return arr; }
+        function getMobius() { const arr=[]; for(let i=0;i<particleCount;i++){ const u=Math.random()*Math.PI*2; const v=(Math.random()*2)-1; const r=350; const sw=150; arr.push((r+v*sw/2*Math.cos(u/2))*Math.cos(u), (r+v*sw/2*Math.cos(u/2))*Math.sin(u), v*sw/2*Math.sin(u/2)); } return arr; }
+        function getPenrose() { const arr=[]; const s=500; const edges=[[[-s,-s,-s],[s,-s,-s]],[[s,-s,-s],[s,s,-s]],[[s,s,-s],[-s,s,-s]],[[-s,s,-s],[-s,-s,-s]],[[-s,-s,s],[s,-s,s]],[[s,-s,s],[s,s,s]],[[s,s,s],[-s,s,s]],[[-s,s,s],[-s,-s,s]],[[-s,-s,-s],[-s,-s,s]],[[s,-s,-s],[s,-s,s]],[[s,s,-s],[s,s,s]],[[-s,s,-s],[-s,s,s]]]; const p=Math.floor(particleCount/edges.length); edges.forEach(e=>{ const[S,E]=e; for(let i=0;i<p;i++){ const t=Math.random(); const j=20; arr.push(S[0]+(E[0]-S[0])*t+(Math.random()-0.5)*j, S[1]+(E[1]-S[1])*t+(Math.random()-0.5)*j, S[2]+(E[2]-S[2])*t+(Math.random()-0.5)*j); }}); return arr; }
+        function getTornado() { const arr=[]; const h=rand(800,1200); const top=rand(2,5); for(let i=0;i<particleCount;i++){ const y=(i/particleCount)*h-h/2; const t=(y+h/2)/h; const r=20+t*400*top; const a=y*0.1; const n=(Math.random()-0.5)*50*t; arr.push(Math.cos(a)*r+n, y+(Math.random()-0.5)*20, Math.sin(a)*r+n); } return arr; }
+        function getDNA() { const arr=[]; const twist=0.1; const rad=200; const len=1500; for(let i=0;i<particleCount;i++){ const l=i%2===0?1:-1; const t=(i/particleCount)*len-len/2; const a=t*twist; const n=(Math.random()-0.5)*20; arr.push(Math.cos(a+l*Math.PI)*rad+n, Math.sin(a+l*Math.PI)*rad+n, t+(Math.random()-0.5)*50); } return arr; }
+        function getAtom() { const arr=[]; const ns=100; const o=4; for(let i=0;i<particleCount;i++){ if(i<particleCount*0.2){ const r=Math.random()*ns; const t=Math.random()*Math.PI*2; const p=Math.acos(2*Math.random()-1); arr.push(r*Math.sin(p)*Math.cos(t), r*Math.sin(p)*Math.sin(t), r*Math.cos(p)); }else{ const oi=Math.floor(Math.random()*o); const ao=(Math.PI/o)*oi; const t=Math.random()*Math.PI*2; const rad=rand(300,600); const x0=rad*Math.cos(t); const y0=rad*Math.sin(t)*0.3; const z0=(Math.random()-0.5)*20; arr.push(x0*Math.cos(ao)-y0*Math.sin(ao), x0*Math.sin(ao)+y0*Math.cos(ao), z0+x0*Math.sin(ao*2)); } } return arr; }
+
+        // --- NEW ORGANIC SHAPES ---
+        function getRose() {
+            const arr = [];
+            for(let i=0; i<particleCount; i++) {
+                const u = Math.random() * Math.PI * 2;
+                const v = Math.random() * Math.PI;
+                // Parametric Rose / Flower shape approximation
+                const r = 300 * (1 + 0.3 * Math.cos(5 * u)) * Math.sin(v);
+                // Creating a cup-like floral structure
+                const h = 400 * Math.pow(v/Math.PI, 2) - 200;
+                // Varying radius with height to create petal curve
+                const rad = r * (0.5 + 0.5 * Math.pow(v/Math.PI, 0.5));
+                
+                const x = rad * Math.cos(u);
+                const y = h + Math.sin(10*u)*30; // Petal waviness
+                const z = rad * Math.sin(u);
+                arr.push(x, y, z);
+            }
+            return arr;
+        }
+
+        function getButterfly() {
+            const arr = [];
+            const scale = 80;
+            for(let i=0; i<particleCount; i++) {
+                const t = Math.random() * 12 * Math.PI; 
+                // Temple H. Fay Butterfly Curve
+                const e = Math.exp(Math.cos(t));
+                const c = 2 * Math.cos(4*t);
+                const s = Math.pow(Math.sin(t/12), 5);
+                const r = scale * (e - c + s);
+                
+                const x = r * Math.sin(t);
+                const y = r * Math.cos(t);
+                // Flap wings based on x distance from center
+                const z = Math.abs(x) * 0.5 + (Math.random()-0.5)*20; 
+                
+                // Rotate to face camera nicely (optional, currently XY plane + Z depth)
+                arr.push(x, y, z);
+            }
+            return arr;
+        }
+
+        function getJellyfish() {
+            const arr = [];
+            for(let i=0; i<particleCount; i++) {
+                if (i < particleCount * 0.3) {
+                    // Head (Dome / Semi-sphere)
+                    const u = Math.random() * Math.PI * 2;
+                    const v = Math.random() * Math.PI / 2;
+                    const r = 250;
+                    // Add some noise to surface
+                    const dr = (Math.random()-0.5)*10;
+                    arr.push((r+dr)*Math.sin(v)*Math.cos(u), (r+dr)*Math.cos(v) + 150, (r+dr)*Math.sin(v)*Math.sin(u));
+                } else {
+                    // Tentacles (Sine waves)
+                    const numTentacles = 12;
+                    const tentacleId = i % numTentacles;
+                    const angle = (tentacleId / numTentacles) * Math.PI * 2;
+                    const h = Math.random() * 600; // Length
+                    const rBase = 150 * Math.random(); // Inner and outer tentacles
+                    
+                    const xBase = Math.cos(angle) * rBase;
+                    const zBase = Math.sin(angle) * rBase;
+                    
+                    const y = 150 - h;
+                    // Flowing motion in static form
+                    const flow = Math.sin(h * 0.02 + angle) * 40; 
+                    
+                    arr.push(xBase + flow, y, zBase + flow);
+                }
+            }
+            return arr;
+        }
+
+        function getNautilus() {
+            const arr = [];
+            for(let i=0; i<particleCount; i++) {
+                const angle = Math.random() * Math.PI * 6; // 3 rotations
+                const tubeAngle = Math.random() * Math.PI * 2;
+                
+                const R = 20 * Math.exp(0.3 * angle);
+                const r = 10 * Math.exp(0.3 * angle);
+                
+                // Main spiral in XY plane
+                const cx = R * Math.cos(angle);
+                const cy = R * Math.sin(angle);
+                
+                // Tube around it
+                const x = cx + r * Math.cos(tubeAngle) * Math.cos(angle);
+                const y = cy + r * Math.cos(tubeAngle) * Math.sin(angle);
+                const z = r * Math.sin(tubeAngle);
+                
+                arr.push(x, y, z);
+            }
+            return arr;
+        }
+
+        function getLily() {
+            const arr = [];
+            for(let i=0; i<particleCount; i++) {
+                const u = Math.random(); // 0 to 1 along stem/flower
+                const v = Math.random() * Math.PI * 2; // Angle
+                
+                // Shape profile
+                const h = u * 600 - 300; // Height
+                const flare = Math.pow(u, 2) * 200; // Trumpet flare
+                
+                // Petal modulation only at the top (u > 0.5)
+                const petalFactor = Math.max(0, (u - 0.5) * 2);
+                const shape = 1 + 0.5 * Math.sin(6 * v) * petalFactor; // 6 petals
+                
+                const r = (30 + flare) * shape;
+                
+                // Curl outward at top
+                const curl = Math.pow(u, 4) * 100;
+                
+                const x = (r + curl) * Math.cos(v);
+                const z = (r + curl) * Math.sin(v);
+                const y = h;
+                
+                arr.push(x, y, z);
+            }
+            return arr;
+        }
+
+        function getLotus() {
+            const arr = [];
+            for(let i=0; i<particleCount; i++) {
+                 const u = Math.random() * Math.PI * 2;
+                 const v = Math.random(); // distance from center
+                 
+                 // 8 petals frequency
+                 const shape = Math.abs(Math.cos(4 * u)); 
+                 const r = v * 400; 
+                 
+                 // Profile: center low, tips high and curled
+                 // v=0 (center) -> h=0
+                 // v=1 (tips) -> h=high + modulation
+                 const h = Math.pow(v, 2) * 150 + v * 100 * shape;
+                 
+                 // Add some randomness for volume
+                 const noise = (Math.random() - 0.5) * 20;
+                 
+                 const x = r * Math.cos(u);
+                 const z = r * Math.sin(u);
+                 const y = h - 100 + noise;
+                 arr.push(x, y, z);
+            }
+            return arr;
+        }
+
+        function getFern() {
+            const arr = [];
+            let x = 0, y = 0;
+            for(let i=0; i<particleCount; i++) {
+                const r = Math.random();
+                let nx, ny;
+                // Barnsley Fern IFS parameters
+                if (r < 0.01) {
+                    nx = 0;
+                    ny = 0.16 * y;
+                } else if (r < 0.86) {
+                    nx = 0.85 * x + 0.04 * y;
+                    ny = -0.04 * x + 0.85 * y + 1.6;
+                } else if (r < 0.93) {
+                    nx = 0.2 * x - 0.26 * y;
+                    ny = 0.23 * x + 0.22 * y + 1.6;
+                } else {
+                    nx = -0.15 * x + 0.28 * y;
+                    ny = 0.26 * x + 0.24 * y + 0.44;
+                }
+                x = nx; y = ny;
+                
+                // Scale up (usually 0..10 range -> 0..800 range)
+                const scale = 60;
+                // Center it roughly: x is approx [-2.5, 2.5], y is [0, 10]
+                const px = x * scale;
+                const py = y * scale - 300;
+                
+                // Add 3D curve: bend backward/forward
+                const z = Math.pow(x/3, 2) * 10 - Math.pow(y/10, 2)*20;
+                
+                arr.push(px, py, z);
+            }
+            return arr;
+        }
+
+        const shapeGenerators = {
+            'Universe': getUniverse, 'Heart': getHeart, 'Mobius': getMobius, 'Penrose': getPenrose, 'Tornado': getTornado,
+            'Lorenz': getLorenz, 'Rössler': getRossler, 'Chen': getChen, 
+            'Aizawa': getAizawa, 'Dadras': getDadras,
+            'Sierpinski': getSierpinski, 'Mandelbulb': getMandelbulb, 'Menger': getMenger, 'Julia': getJulia, 'Clifford': getClifford,
+            'DNA': getDNA, 'Atom': getAtom,
+            'Rose': getRose, 'Nautilus': getNautilus, 'Lily': getLily, 
+            'Lotus': getLotus, 'Fern': getFern, 
+            'Butterfly': getButterfly, 'Jellyfish': getJellyfish
+        };
+
+        // --- SHADERS (Cleaned) ---
         const vertexShader = `
             uniform float size;
+            uniform float uBass;
+            uniform float uTreble;
+            uniform float uWave;
+            uniform float uTime;
+            uniform float uModY; 
+            uniform int uEffect; 
+            
+            // Interaction Uniforms (Mouse force removed)
+            uniform vec3 uMousePos;
+
             varying vec3 vColor;
+            varying vec3 vPos;
+            varying float vAlpha;
+
+            float random(vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
+            
+            // Simplex Noise (Omitted for brevity, assumed standard snoise function)
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+            vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+            float snoise(vec3 v) { 
+                const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+                vec3 i  = floor(v + dot(v, C.yyy));
+                vec3 x0 = v - i + dot(i, C.xxx);
+                vec3 g = step(x0.yzx, x0.xyz);
+                vec3 l = 1.0 - g;
+                vec3 i1 = min( g.xyz, l.zxy );
+                vec3 i2 = max( g.xyz, l.zxy );
+                vec3 x1 = x0 - i1 + C.xxx;
+                vec3 x2 = x0 - i2 + C.yyy;
+                vec3 x3 = x0 - D.yyy;
+                i = mod289(i); 
+                vec4 p = permute( permute( permute( i.z + vec4(0.0, i1.z, i2.z, 1.0 )) + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                float n_ = 0.142857142857; 
+                vec3  ns = n_ * D.wyz - D.xzx;
+                vec4 j = p - 49.0 * floor(p * ns.z * ns.z); 
+                vec4 x_ = floor(j * ns.z);
+                vec4 y_ = floor(j - 7.0 * x_ ); 
+                vec4 x = x_ *ns.x + ns.yyyy;
+                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+                vec4 b0 = vec4( x.xy, y.xy );
+                vec4 b1 = vec4( x.zw, y.zw );
+                vec4 s0 = floor(b0)*2.0 + 1.0;
+                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                vec3 p0 = vec3(a0.xy,h.x);
+                vec3 p1 = vec3(a0.zw,h.y);
+                vec3 p2 = vec3(a1.xy,h.z);
+                vec3 p3 = vec3(a1.zw,h.w);
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+                vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                m = m * m;
+                return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+            }
+
             void main() {
                 vColor = color;
-                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                // 根据距离调整大小
-                gl_PointSize = size * (300.0 / -mvPosition.z);
+                vec3 pos = position;
+                vAlpha = 1.0;
+
+                // --- Material Logic ---
+                if (uEffect == 2) { // Plant
+                    float n = snoise(pos * 0.01 + uTime * 0.2);
+                    pos += n * 20.0;
+                    vColor.g += 0.2; 
+                } 
+                else if (uEffect == 3) { // Silk
+                    float wave = sin(pos.x * 0.01 + uTime) * 20.0;
+                    pos.y += wave;
+                    pos.z += cos(pos.y * 0.01 + uTime) * 20.0;
+                }
+                else if (uEffect == 5) { // Rock
+                    float r = random(pos.xy) * 5.0;
+                    pos += r;
+                }
+
+                // --- Audio Reactivity ---
+                pos = pos * (1.0 + uBass * 0.15); 
+                if (uWave > 0.05) {
+                    float wave = sin(pos.y * 0.02 + uTime * 4.0) * cos(pos.x * 0.02 + uTime * 3.0);
+                    pos.x += wave * uWave * 10.0; 
+                }
+
+                // Restore XY MOD Ripple (Y-axis interaction)
+                if (uModY > 0.01) {
+                    float ripple = sin(pos.x * 0.05 + uTime * 5.0) * cos(pos.z * 0.05 + uTime * 2.0);
+                    pos.y += ripple * uModY * 30.0; 
+                }
+                
+                vPos = pos;
+                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                
+                float scale = 1.0;
+                if(uEffect == 1) scale = 2.0; 
+                if(uEffect == 3) scale = 0.5; 
+                
+                gl_PointSize = size * scale * (1.0 + uBass * 1.5) * (300.0 / -mvPosition.z);
                 gl_Position = projectionMatrix * mvPosition;
             }
         `;
 
         const fragmentShader = `
-            uniform float uShape; // 0.0 - 3.0
             uniform vec3 uColorTint;
+            uniform float uBass;
+            uniform int uEffect; 
+            uniform int uStyle; 
+            uniform float uPlayColor;
+            uniform float uTime;
+
             varying vec3 vColor;
+            varying vec3 vPos;
+            varying float vAlpha;
 
             void main() {
                 vec2 uv = gl_PointCoord;
-                vec3 finalColor = vColor * uColorTint;
+                float dist = length(uv - 0.5);
+                if (dist > 0.5) discard;
+
+                vec3 finalColor;
                 
-                // Shape 0: Soft Glow (Gaussian-ish)
-                float d = length(uv - 0.5);
-                float s0 = exp(-d * d * 8.0); 
-
-                // Shape 1: Diamond / Star-like
-                vec2 p = abs(uv - 0.5);
-                float s1 = smoothstep(0.4, 0.3, p.x + p.y);
-
-                // Shape 2: Square
-                float s2 = smoothstep(0.4, 0.3, max(p.x, p.y));
-
-                // Shape 3: Ring / Donut
-                float s3 = smoothstep(0.3, 0.35, d) * smoothstep(0.5, 0.4, d);
-
-                float alpha = 0.0;
-
-                // Mix shapes based on uShape
-                if (uShape < 1.0) {
-                    alpha = mix(s0, s1, uShape);
-                } else if (uShape < 2.0) {
-                    alpha = mix(s1, s2, uShape - 1.0);
+                // Logic for Dynamic Color (Play Color)
+                if (uPlayColor > 0.5) {
+                    vec3 cycle = 0.5 + 0.5 * cos(uTime * 0.5 + vec3(0.0, 2.0, 4.0)); 
+                    finalColor = vColor * cycle * 1.5;
                 } else {
-                    alpha = mix(s2, s3, uShape - 2.0);
+                    finalColor = vColor * uColorTint;
                 }
 
-                if (alpha < 0.01) discard;
+                float alpha = 1.0;
+
+                // --- Material Effects ---
+                if (uEffect == 1) { // Glass
+                    float rim = smoothstep(0.4, 0.5, dist);
+                    alpha = 0.3 + rim * 0.5; 
+                    if (uPlayColor <= 0.5) finalColor += vec3(0.5, 0.8, 1.0) * rim; 
+                } 
+                else if (uEffect == 4) { // Metal
+                    float shine = smoothstep(0.2, 0.3, dist) * smoothstep(0.5, 0.4, dist);
+                    finalColor = finalColor * 1.5 + vec3(1.0) * shine;
+                    finalColor = pow(finalColor, vec3(1.2)); 
+                }
+                else if (uEffect == 5) { // Rock
+                    if(dist > 0.4) alpha = 0.0; 
+                    finalColor *= 0.6; 
+                }
+
+                // --- Style Overrides ---
+                if (uStyle == 1) { // Ink Wash
+                   float edge = smoothstep(0.5, 0.0, dist);
+                   float gray = dot(finalColor, vec3(0.299, 0.587, 0.114));
+                   if (uPlayColor <= 0.5) { 
+                       finalColor = mix(vec3(gray), finalColor, 0.8); 
+                       finalColor *= 0.9; 
+                   }
+                   alpha = edge * 0.7; 
+                }
+                else if (uStyle == 2) { // Oil
+                   finalColor *= 1.8; 
+                   finalColor = pow(finalColor, vec3(1.5)); 
+                   float stroke = smoothstep(0.5, 0.45, dist);
+                   alpha = stroke;
+                }
+                else if (uStyle == 4) { // Sketch
+                   if (dist > 0.48) discard;
+                   finalColor = vec3(0.1); 
+                   alpha = 0.7;
+                }
+                else if (uStyle == 7) { // Fire
+                    float core = exp(-dist * dist * 15.0);
+                    alpha = core;
+                    finalColor += vec3(0.5, 0.2, 0.0) * core;
+                }
+                else {
+                    // Standard Universe
+                    float glow = exp(-dist * dist * 10.0); 
+                    alpha = glow;
+                }
+
                 gl_FragColor = vec4(finalColor, alpha);
             }
         `;
 
         init();
         setupUIControls();
+        setupFileAudio();
         animate();
+
+        function toggleSection(el) { el.parentElement.classList.toggle('collapsed'); }
+        function toggleMainPanel(btn) {
+            const panel = document.getElementById('hologram-ui');
+            panel.classList.toggle('minimized');
+            btn.innerText = panel.classList.contains('minimized') ? '[ + ]' : '[ - ]';
+        }
+        window.toggleSection = toggleSection;
+        window.toggleMainPanel = toggleMainPanel;
 
         function init() {
             scene = new THREE.Scene();
             scene.fog = new THREE.FogExp2(0x000000, 0.001);
-
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 4000);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 4000);
             camera.position.z = 1000;
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.autoClearColor = false;
+            renderer.setClearColor(0x000000, 1);
             document.body.appendChild(renderer.domElement);
 
             initParticles(particleCount);
-            initLines(); // 初始化连线系统
+            initLines();
+            generateConnections();
+            initCursor(); // 初始化流星光标
+
+            // Touch Event Listeners
+            document.addEventListener('touchstart', onTouchStart, { passive: false });
+            document.addEventListener('touchmove', onTouchMove, { passive: false });
+            document.addEventListener('touchend', onTouchEnd, { passive: false });
 
             document.addEventListener('mousemove', onDocumentMouseMove, false);
+            document.addEventListener('mousedown', onDocumentMouseDown, false);
+            document.addEventListener('mouseup', onDocumentMouseUp, false);
             window.addEventListener('resize', onWindowResize, false);
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    cycleStyle();
+                }
+                if (e.key === ' ') { 
+                    e.preventDefault();
+                    cycleMaterial();
+                }
+            });
 
             setTimeout(() => {
                 document.getElementById('progress').style.width = "100%";
                 setTimeout(() => {
                     document.getElementById('loader').style.opacity = 0;
-                    setTimeout(() => {
-                        document.getElementById('loader').style.display = 'none';
-                    }, 500);
+                    setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
                 }, 300);
             }, 500);
         }
 
-        function initParticles(count) {
-            if (particles) {
-                scene.remove(particles);
-                geometry.dispose();
+        // --- Touch Handlers ---
+        function onTouchStart(e) {
+            if(e.target.closest('#hologram-ui')) return; // Allow UI interaction
+            e.preventDefault();
+
+            const now = Date.now();
+            const touches = e.touches;
+
+            // Track touch start times
+            for (let i = 0; i < touches.length; i++) {
+                if (!touchStartTimes[touches[i].identifier]) {
+                    touchStartTimes[touches[i].identifier] = now;
+                }
             }
 
-            particleCount = count;
+            if (touches.length === 1) {
+                // Double Tap Check (Mouse Click -> Pinch Toggle)
+                if (now - lastTap < 300) {
+                    togglePinch();
+                    lastTap = 0; 
+                } else {
+                    lastTap = now;
+                }
+                // Update position immediately
+                const t = touches[0];
+                onDocumentMouseMove({ clientX: t.clientX, clientY: t.clientY, target: e.target, buttons: 1 });
 
-            geometry = new THREE.BufferGeometry();
+            } else if (touches.length === 2) {
+                // Check logic: One Held + One Tap vs Two Finger Tap
+                const t1 = touches[0];
+                const t1Start = touchStartTimes[t1.identifier] || now;
+                
+                // If first finger held > 400ms, trigger Space logic (Material)
+                if (now - t1Start > 400) {
+                    cycleMaterial();
+                } else {
+                    // Likely simultaneous touch -> Tab logic (Style)
+                    // We can trigger this on touch start for responsiveness
+                    cycleStyle();
+                }
+            }
+        }
+
+        function onTouchMove(e) {
+            if(e.target.closest('#hologram-ui')) return;
+            e.preventDefault();
+            if(e.touches.length > 0) {
+                const t = e.touches[0];
+                onDocumentMouseMove({ clientX: t.clientX, clientY: t.clientY, target: e.target, buttons: 1 });
+            }
+        }
+
+        function onTouchEnd(e) {
+            // Cleanup logic if needed
+            // Remove ended touches from tracking
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                delete touchStartTimes[e.changedTouches[i].identifier];
+            }
+        }
+
+        // Helper Functions
+        function cycleMaterial() {
+            let nextIdx = (currentEffect + 1) % materialList.length;
+            setMaterialEffect(materialList[nextIdx]);
+        }
+
+        function cycleStyle() {
+            let idx = styleList.indexOf(currentStyle);
+            idx = (idx + 1) % styleList.length;
+            setRenderStyle(styleList[idx]);
+        }
+
+        function togglePinch() {
+            isMouseDown = !isMouseDown; // Toggle visual force state
             
-            // 使用 ShaderMaterial 替换原来的 PointsMaterial
-            material = new THREE.ShaderMaterial({
-                uniforms: {
-                    size: { value: particleSize },
-                    uShape: { value: shapeMorph },
-                    uColorTint: { value: new THREE.Color(colorR, colorG, colorB) }
-                },
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
+            if (isGestureActive && fileDistortionNode) {
+                if(isMouseDown) {
+                     isPinching = true;
+                     fileDistortionNode.curve = makeDistortionCurve(100);
+                     logSystem("Pinch Effect: ON");
+                } else {
+                     isPinching = false;
+                     fileDistortionNode.curve = makeDistortionCurve(0);
+                     logSystem("Pinch Effect: OFF");
+                }
+            } else {
+                logSystem(isMouseDown ? "Force Field: ACTIVE" : "Force Field: INACTIVE");
+            }
+        }
+
+        function initCursor() {
+            // Cursor Material (Shared)
+            const cursorVertex = vertexShader
+                .replace('void main() {', 'attribute float alpha; varying float vTrailAlpha; void main() { vTrailAlpha = alpha;')
+                .replace('vAlpha = 1.0;', 'vAlpha = 1.0;'); 
+            const cursorFragment = fragmentShader
+                .replace('varying float vAlpha;', 'varying float vAlpha; varying float vTrailAlpha;')
+                .replace('gl_FragColor = vec4(finalColor, alpha);', 'gl_FragColor = vec4(finalColor, alpha * vTrailAlpha);');
+
+            const headGeo = new THREE.BufferGeometry();
+            headGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0]), 3));
+            headGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array([1, 1, 1]), 3));
+            headGeo.setAttribute('alpha', new THREE.BufferAttribute(new Float32Array([1.0]), 1));
+
+            const cursorUniforms = THREE.UniformsUtils.clone(material.uniforms);
+            cursorMaterial = new THREE.ShaderMaterial({
+                uniforms: cursorUniforms,
+                vertexShader: cursorVertex,
+                fragmentShader: cursorFragment,
+                transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-                transparent: true,
                 vertexColors: true
             });
 
-            // 重新计算位置
-            let posData;
-            if (currentShape === 'custom') {
-                posData = getUniverseLayout(); 
-            } else {
-                switch(currentShape) {
-                    case 'heart': posData = getHeartLayout(); break;
-                    case 'mobius': posData = getMobiusLayout(); break;
-                    case 'fractal': posData = getFractalLayout(); break;
-                    case 'penrose': posData = getPenroseLayout(); break;
-                    default: posData = getUniverseLayout(); break;
-                }
+            cursorHead = new THREE.Points(headGeo, cursorMaterial);
+            cursorHead.frustumCulled = false;
+            scene.add(cursorHead);
+
+            const trailGeo = new THREE.BufferGeometry();
+            const trailPos = new Float32Array(TRAIL_LENGTH * 3);
+            const trailCols = new Float32Array(TRAIL_LENGTH * 3);
+            const trailAlphas = new Float32Array(TRAIL_LENGTH);
+
+            for(let i=0; i<TRAIL_LENGTH; i++) {
+                trailCols[i*3] = 1; trailCols[i*3+1] = 1; trailCols[i*3+2] = 1;
+                trailAlphas[i] = 1.0 - (i / TRAIL_LENGTH); 
+            }
+
+            trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+            trailGeo.setAttribute('color', new THREE.BufferAttribute(trailCols, 3));
+            trailGeo.setAttribute('alpha', new THREE.BufferAttribute(trailAlphas, 1));
+
+            cursorTrail = new THREE.Points(trailGeo, cursorMaterial);
+            cursorTrail.frustumCulled = false;
+            scene.add(cursorTrail);
+
+            for(let i=0; i<TRAIL_LENGTH; i++) trailPositions.push(new THREE.Vector3(0,0,0));
+        }
+
+        function updateCursor() {
+            if (!cursorHead || !cursorTrail) return;
+            raycaster.setFromCamera(mouseVector, camera);
+            const intersect = new THREE.Vector3();
+            raycaster.ray.intersectPlane(mousePlane, intersect);
+            worldMouse.copy(intersect); // Store for shader interaction
+            
+            cursorHead.position.copy(intersect);
+            trailPositions.pop();
+            trailPositions.unshift(intersect.clone());
+            const positions = cursorTrail.geometry.attributes.position.array;
+            for(let i=0; i<TRAIL_LENGTH; i++) {
+                positions[i*3] = trailPositions[i].x;
+                positions[i*3+1] = trailPositions[i].y;
+                positions[i*3+2] = trailPositions[i].z;
+            }
+            cursorTrail.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function initParticles(count) {
+            if (particles) { scene.remove(particles); geometry.dispose(); }
+            particleCount = count;
+            geometry = new THREE.BufferGeometry();
+            
+            // Allocate Memory for Morphing
+            currentPositions = new Float32Array(particleCount * 3);
+            targetPositions = new Float32Array(particleCount * 3);
+            currentColors = new Float32Array(particleCount * 3);
+            targetColors = new Float32Array(particleCount * 3);
+
+            const styleMap = { 
+                'Universe':0, 'Ink':1, 'Oil':2, 'Forest':3, 'Sketch':4, 
+                'Cell':5, 'Ocean':6, 'Fire':7 
+            };
+            
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    size: { value: particleSize },
+                    uColorTint: { value: new THREE.Color(colorR, colorG, colorB) },
+                    uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uWave: { value: 0.0 }, 
+                    uModX: { value: 0.5 }, uModY: { value: 0.0 },
+                    uTime: { value: 0.0 },
+                    uPlayColor: { value: autoColorCycle ? 1.0 : 0.0 },
+                    uEffect: { value: currentEffect },
+                    uStyle: { value: styleMap[currentStyle] || 0 },
+                    uMousePos: { value: new THREE.Vector3(0,0,0) }
+                },
+                vertexShader, fragmentShader,
+                blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, vertexColors: true
+            });
+            
+            // Initial generation
+            const initialPos = getUniverse();
+            const initialCol = getColors();
+            
+            for(let i=0; i<particleCount * 3; i++) {
+                currentPositions[i] = i < initialPos.length ? initialPos[i] : 0;
+                targetPositions[i] = currentPositions[i];
+                currentColors[i] = i < initialCol.length ? initialCol[i] : 1;
             }
             
-            const initialColors = getColors(currentShape === 'custom' ? 'ai' : currentShape);
-
-            const posArray = new Float32Array(particleCount * 3);
-            const colArray = new Float32Array(particleCount * 3);
-
-            for (let i = 0; i < particleCount; i++) {
-                posArray[i * 3] = posData[i * 3];
-                posArray[i * 3 + 1] = posData[i * 3 + 1];
-                posArray[i * 3 + 2] = posData[i * 3 + 2];
-
-                colArray[i * 3] = initialColors[i * 3];
-                colArray[i * 3 + 1] = initialColors[i * 3 + 1];
-                colArray[i * 3 + 2] = initialColors[i * 3 + 2];
-            }
-
-            geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colArray, 3));
-
+            geometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(currentColors, 3));
+            
             particles = new THREE.Points(geometry, material);
             scene.add(particles);
+            setRenderStyle(currentStyle);
         }
 
-        function initLines() {
-            linesGeometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(maxLines * 2 * 3); // 2 points per line, 3 coords
-            linesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        function updateParticleGeometry(targetShapeName) {
+            const genFunc = shapeGenerators[targetShapeName] || getUniverse;
+            const posData = genFunc();
+            const colData = getColors();
             
-            const linesMaterial = new THREE.LineBasicMaterial({
-                color: 0x00ffff,
-                transparent: true,
-                opacity: 0.15, // 淡淡的神经线
-                blending: THREE.AdditiveBlending
-            });
-
-            linesMesh = new THREE.LineSegments(linesGeometry, linesMaterial);
-            linesMesh.frustumCulled = false; // 总是渲染，避免闪烁
-            scene.add(linesMesh);
-        }
-
-        function updateLines() {
-            if (!linesMesh || !particles) return;
-            
-            // 0% -> 0 lines, 100% -> maxLines
-            const activeLines = Math.floor(maxLines * (neuralDensity / 100));
-            const positions = linesGeometry.attributes.position.array;
-            const particlePositions = particles.geometry.attributes.position.array;
-            
-            // 将不活动的线段隐藏 (设为 0,0,0)
-            for (let i = activeLines * 6; i < maxLines * 6; i++) {
-                positions[i] = 0;
+            // Populate Target Arrays
+            for (let i = 0; i < particleCount * 3; i++) {
+                targetPositions[i] = i < posData.length ? posData[i] : 0;
+                // Keep colors consistent or change them? Let's just keep them for now or slight shift
+                // Optional: targetColors[i] = ...
             }
             
-            if (activeLines === 0) {
-                linesGeometry.attributes.position.needsUpdate = true;
-                return;
-            }
-            
-            let lineIndex = 0;
-            // 步长根据密度动态调整，以确保连线分布均匀，而不是全堆在数组前面
-            const step = Math.max(1, Math.floor(particleCount / (activeLines + 1))); 
-            
-            // 外层循环遍历粒子，试图发起连接
-            for (let k = 0; k < particleCount && lineIndex < activeLines; k += step) {
-                // 使用 lineSeed 改变起始位置，从而改变连接结构
-                let i = (k + lineSeed) % particleCount;
-                
-                const idx1 = i * 3;
-                const x1 = particlePositions[idx1];
-                const y1 = particlePositions[idx1+1];
-                const z1 = particlePositions[idx1+2];
-
-                // 尝试连接数组中附近的点 (形成结构感)
-                for(let j = 1; j <= 3; j++) {
-                    if (lineIndex >= activeLines) break;
-
-                    // 目标点也受到 Seed 影响，产生更多变化
-                    const targetIdx = (i + j) % particleCount;
-                    const idx2 = targetIdx * 3;
-                    const x2 = particlePositions[idx2];
-                    const y2 = particlePositions[idx2+1];
-                    const z2 = particlePositions[idx2+2];
-
-                    // 计算距离
-                    const dx = x2 - x1;
-                    const dy = y2 - y1;
-                    const dz = z2 - z1;
-                    const distSq = dx*dx + dy*dy + dz*dz;
-
-                    // 阈值：随着密度增加，允许连接更远的点
-                    const threshold = 3000 + neuralDensity * 50; 
-
-                    if (distSq < threshold) {
-                        const lPos = lineIndex * 6;
-                        positions[lPos] = x1;
-                        positions[lPos+1] = y1;
-                        positions[lPos+2] = z1;
-                        
-                        positions[lPos+3] = x2;
-                        positions[lPos+4] = y2;
-                        positions[lPos+5] = z2;
-                        
-                        lineIndex++;
-                    }
-                }
-            }
-            
-            linesGeometry.attributes.position.needsUpdate = true;
-            linesMesh.rotation.copy(particles.rotation);
+            // Trigger Morph
+            isMorphing = true;
         }
 
-        function setupUIControls() {
-            // 1. 粒子数量
-            const pSlider = document.getElementById('particle-slider');
-            const pVal = document.getElementById('particle-val');
-            pSlider.addEventListener('change', (e) => {
-                const val = parseInt(e.target.value);
-                pVal.innerText = val.toLocaleString();
-                initParticles(val);
-                logSystem(`Re-materializing: ${val} units.`);
-            });
-            pSlider.addEventListener('input', (e) => {
-                pVal.innerText = parseInt(e.target.value).toLocaleString();
-            });
-
-            // 2. 速度
-            const sSlider = document.getElementById('speed-slider');
-            const sVal = document.getElementById('speed-val');
-            sSlider.addEventListener('input', (e) => {
-                simSpeed = parseFloat(e.target.value);
-                sVal.innerText = simSpeed.toFixed(1) + "x";
-            });
-
-            // 3. 稳定性
-            const stSlider = document.getElementById('stability-slider');
-            const stVal = document.getElementById('stability-val');
-            stSlider.addEventListener('input', (e) => {
-                const val = parseInt(e.target.value);
-                stability = val / 100;
-                stVal.innerText = val + "%";
-                if (val > 80) stVal.style.color = "#0f0";
-                else if (val > 40) stVal.style.color = "#ff0";
-                else stVal.style.color = "#f00";
-            });
-            
-            // 4. 粒子大小
-            const sizeSlider = document.getElementById('size-slider');
-            const sizeVal = document.getElementById('size-val');
-            sizeSlider.addEventListener('input', (e) => {
-                particleSize = parseFloat(e.target.value);
-                sizeVal.innerText = particleSize.toFixed(1);
-                if(material) material.uniforms.size.value = particleSize; // Update uniform
-            });
-
-            // 5. RGB 调色
-            const rSlider = document.getElementById('slider-r');
-            const gSlider = document.getElementById('slider-g');
-            const bSlider = document.getElementById('slider-b');
-            const rgbVal = document.getElementById('rgb-val');
-
-            function updateColor() {
-                const r = parseInt(rSlider.value);
-                const g = parseInt(gSlider.value);
-                const b = parseInt(bSlider.value);
-                rgbVal.innerText = `${r}, ${g}, ${b}`;
-                
-                colorR = r / 255;
-                colorG = g / 255;
-                colorB = b / 255;
-                
-                if(material) {
-                    material.uniforms.uColorTint.value.setRGB(colorR, colorG, colorB);
-                }
-                if(linesMesh) {
-                    linesMesh.material.color.setRGB(colorR, colorG * 1.2, colorB * 1.5); // 线条颜色略微不同
-                }
-            }
-
-            rSlider.addEventListener('input', updateColor);
-            gSlider.addEventListener('input', updateColor);
-            bSlider.addEventListener('input', updateColor);
-
-            // 6. 神经树密度 & 刷新
-            const neuralSlider = document.getElementById('neural-slider');
-            const neuralVal = document.getElementById('neural-val');
-            const refreshBtn = document.getElementById('btn-refresh-lines');
-
-            neuralSlider.addEventListener('input', (e) => {
-                neuralDensity = parseInt(e.target.value);
-                neuralVal.innerText = neuralDensity + "%";
-            });
-
-            refreshBtn.addEventListener('click', () => {
-                // 随机一个新的偏移种子
-                lineSeed = Math.floor(Math.random() * particleCount);
-                updateLines(); // 强制更新
-            });
-
-            // 7. 形状变形
-            const shapeSlider = document.getElementById('shape-slider');
-            const shapeVal = document.getElementById('shape-val');
-            shapeSlider.addEventListener('input', (e) => {
-                shapeMorph = parseFloat(e.target.value);
-                if(material) material.uniforms.uShape.value = shapeMorph;
-
-                // 更新显示文本
-                let txt = "Glow";
-                if (shapeMorph > 0.5 && shapeMorph <= 1.5) txt = "Diamond";
-                else if (shapeMorph > 1.5 && shapeMorph <= 2.5) txt = "Square";
-                else if (shapeMorph > 2.5) txt = "Ring";
-                shapeVal.innerText = txt;
-            });
-        }
-
-        function logSystem(msg) {
-            const log = document.getElementById('ai-log');
-            log.innerHTML += `\n[SYS] ${msg}`;
-            log.scrollTop = log.scrollHeight;
-        }
-
-        // --- 本地过程化生成模块 ---
-        // ... existing procedural functions ...
-        
-        // 预设点击处理
-        function usePreset(name) {
-            document.getElementById('ai-input').value = name;
-            triggerAI();
-        }
-
-        function triggerAI() {
-            const input = document.getElementById('ai-input');
-            const btn = document.getElementById('ai-btn');
-            const log = document.getElementById('ai-log');
-            const prompt = input.value.trim().toLowerCase();
-
-            if (!prompt) return;
-
-            input.disabled = true;
-            btn.disabled = true;
-            log.innerHTML += `\n>> PARSING: "${prompt}"...`;
-            log.scrollTop = log.scrollHeight;
-
-            // 模拟计算延迟
-            setTimeout(() => {
-                try {
-                    let newPos = [];
-                    
-                    // 关键词匹配算法
-                    if (prompt.includes('galaxy') || prompt.includes('spiral')) {
-                        newPos = getProceduralGalaxy();
-                    } else if (prompt.includes('dna') || prompt.includes('helix')) {
-                        newPos = getProceduralDNA();
-                    } else if (prompt.includes('tornado') || prompt.includes('storm')) {
-                        newPos = getProceduralTornado();
-                    } else if (prompt.includes('pyramid')) {
-                        newPos = getProceduralPyramid();
-                    } else if (prompt.includes('atom') || prompt.includes('nucleus')) {
-                        newPos = getProceduralAtom();
-                    } else if (prompt.includes('matrix') || prompt.includes('grid') || prompt.includes('cube')) {
-                        newPos = getProceduralCube();
-                    } else {
-                        // 默认回退到混沌模式
-                         newPos = getProceduralAbstract();
-                         logSystem(`Unknown pattern. Generating Abstract Chaos.`);
-                    }
-                    
-                    log.innerHTML += `\n>> CONSTRUCTING GEOMETRY...`;
-                    log.scrollTop = log.scrollHeight;
-
-                    transformToCustom(newPos, prompt.toUpperCase());
-                    
-                    // 生成一些随机的系统日志
-                    const lores = [
-                         "Geometry synthesized locally.",
-                         "Quantum resonance stable.",
-                         "Structure compiled from void data.",
-                         "Local reality overridden.",
-                         "Entropy reshaped successfully."
-                    ];
-                    logSystem(lores[Math.floor(Math.random() * lores.length)]);
-
-                } catch (error) {
-                    console.error(error);
-                    log.innerHTML += `\n[ERROR] GENERATION FAILED.`;
-                } finally {
-                    input.disabled = false;
-                    btn.disabled = false;
-                    input.value = '';
-                    input.focus();
-                }
-            }, 500);
-        }
-
-        // --- 过程化生成算法 (带随机项) ---
-
-        function getProceduralGalaxy() {
-            const arr = [];
-            // 随机参数：旋臂数量(3-6)，紧密度，偏移
-            const arms = Math.floor(rand(3, 7));
-            const spin = rand(0.1, 0.3);
-            const spread = rand(0.5, 1.5);
-            
-            for (let i = 0; i < particleCount; i++) {
-                // 随机分布
-                const t = Math.random(); // 0 to 1 along arm
-                const armIndex = i % arms;
-                const angle = t * Math.PI * 2 * arms * spin + (armIndex * Math.PI * 2 / arms);
-                const r = 800 * t + 50;
-                
-                // 增加随机噪声
-                const noiseX = (Math.random() - 0.5) * 200 * t * spread;
-                const noiseY = (Math.random() - 0.5) * 200 * t * spread;
-                const noiseZ = (Math.random() - 0.5) * 150 * (1 - t); // 中心厚，边缘薄
-
-                arr.push(
-                    Math.cos(angle) * r + noiseX,
-                    Math.sin(angle) * r + noiseY,
-                    noiseZ
-                );
-            }
-            return arr;
-        }
-
-        function getProceduralDNA() {
-            const arr = [];
-            // 随机参数：螺旋速度，半径，长度
-            const twist = rand(0.05, 0.15);
-            const radius = rand(100, 250);
-            const length = rand(1000, 1800);
-            
-            for (let i = 0; i < particleCount; i++) {
-                const layer = i % 2 === 0 ? 1 : -1; // 双链
-                const t = (i / particleCount) * length - length/2;
-                const angle = t * twist;
-                
-                const noise = (Math.random() - 0.5) * 20;
-                
-                arr.push(
-                    Math.cos(angle + (layer * Math.PI)) * radius + noise,
-                    Math.sin(angle + (layer * Math.PI)) * radius + noise,
-                    t + (Math.random() - 0.5) * 50
-                );
-            }
-            return arr;
-        }
-
-        function getProceduralTornado() {
-            const arr = [];
-            // 随机：高度，顶端半径倍率
-            const height = rand(800, 1200);
-            const topSpread = rand(2, 5);
-            
-            for (let i = 0; i < particleCount; i++) {
-                const h = (i / particleCount) * height - height/2;
-                const t = (h + height/2) / height; // 0 (bottom) to 1 (top)
-                const r = 20 + t * 400 * topSpread; // 底部窄，顶部宽
-                const angle = h * 0.1;
-                
-                const noise = (Math.random()-0.5) * 50 * t;
-                
-                arr.push(
-                    Math.cos(angle) * r + noise,
-                    h + (Math.random()-0.5) * 20,
-                    Math.sin(angle) * r + noise
-                );
-            }
-            return arr;
-        }
-
-        function getProceduralPyramid() {
-            const arr = [];
-            const baseSize = rand(600, 1000);
-            
-            for (let i = 0; i < particleCount; i++) {
-                // 随机点在金字塔体积内
-                // x, z range from -size to size based on y height
-                const y = (Math.random() - 0.5) * baseSize; // Height
-                const scale = 1 - (y + baseSize/2) / baseSize; // 1 at bottom, 0 at top
-                
-                // 增加一些边缘聚集效果
-                const edge = Math.random() > 0.8;
-                let x, z;
-                
-                if (edge) {
-                    // 边缘线条
-                    x = (Math.random() > 0.5 ? 1 : -1) * (baseSize/2 * scale);
-                    z = (Math.random() - 0.5) * baseSize * scale;
-                    if (Math.random() > 0.5) [x, z] = [z, x];
-                } else {
-                    // 内部填充
-                    x = (Math.random() - 0.5) * baseSize * scale;
-                    z = (Math.random() - 0.5) * baseSize * scale;
-                }
-
-                arr.push(x, y, z);
-            }
-            return arr;
-        }
-
-        function getProceduralAtom() {
-            const arr = [];
-            const nucleusSize = rand(50, 100);
-            const orbits = Math.floor(rand(3, 6));
-            
-            for (let i = 0; i < particleCount; i++) {
-                if (i < particleCount * 0.2) {
-                    // 核心 (Nucleus)
-                    const r = Math.random() * nucleusSize;
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.acos(2 * Math.random() - 1);
-                    arr.push(
-                        r * Math.sin(phi) * Math.cos(theta),
-                        r * Math.sin(phi) * Math.sin(theta),
-                        r * Math.cos(phi)
-                    );
-                } else {
-                    // 电子轨道
-                    const orbitIdx = Math.floor(Math.random() * orbits);
-                    const angleOffset = (Math.PI / orbits) * orbitIdx;
-                    const t = Math.random() * Math.PI * 2;
-                    const radius = rand(300, 600);
-                    
-                    // 旋转轨道平面
-                    const x0 = radius * Math.cos(t);
-                    const y0 = radius * Math.sin(t) * 0.3; // 扁平化
-                    const z0 = (Math.random() - 0.5) * 20; // 轨道厚度
-                    
-                    // 绕随机轴旋转
-                    const cosA = Math.cos(angleOffset * Math.PI); // 增加旋转随机性
-                    const sinA = Math.sin(angleOffset * Math.PI);
-                    
-                    arr.push(
-                        x0 * Math.cos(angleOffset) - y0 * Math.sin(angleOffset), // 简化旋转
-                        x0 * Math.sin(angleOffset) + y0 * Math.cos(angleOffset),
-                        z0 + x0 * Math.sin(angleOffset * 2) // 添加Z轴倾斜
-                    );
-                }
-            }
-            return arr;
-        }
-
-        function getProceduralCube() {
-            const arr = [];
-            const size = rand(600, 900);
-            
-            for (let i = 0; i < particleCount; i++) {
-                // 随机填充立方体，带网格感
-                let x = (Math.random() - 0.5) * size;
-                let y = (Math.random() - 0.5) * size;
-                let z = (Math.random() - 0.5) * size;
-                
-                // 量子化坐标以形成网格
-                const grid = 50;
-                x = Math.round(x / grid) * grid;
-                y = Math.round(y / grid) * grid;
-                z = Math.round(z / grid) * grid;
-                
-                // 随机空缺
-                if (Math.random() > 0.8) {
-                    x *= 2; y *= 2; z *= 2; // 外部飞散点
-                }
-                
-                arr.push(x, y, z);
-            }
-            return arr;
-        }
-
-        function getProceduralAbstract() {
-            const arr = [];
-            // 随机参数生成奇怪的数学形状
-            const a = rand(0.01, 0.1);
-            const b = rand(0.01, 0.1);
-            const c = rand(0.01, 0.1);
-            const scale = rand(300, 600);
-            
-            for (let i = 0; i < particleCount; i++) {
-                const ix = i * a;
-                const iy = i * b;
-                const iz = i * c;
-                
-                arr.push(
-                    Math.sin(ix) * Math.cos(iy) * scale,
-                    Math.cos(ix) * Math.sin(iz) * scale,
-                    Math.sin(iy) * Math.cos(iz) * scale
-                );
-            }
-            return arr;
-        }
-
-        // --- 经典图形生成算法 ---
-
-        function getUniverseLayout() {
-            const arr = [];
-            for (let i = 0; i < particleCount; i++) {
-                const r = 800 + Math.random() * 800;
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos((Math.random() * 2) - 1);
-                arr.push(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
-            }
-            return arr;
-        }
-
-        function getHeartLayout() {
-            const arr = [];
-            for (let i = 0; i < particleCount; i++) {
-                const t = Math.random() * Math.PI * 2;
-                let x = 16 * Math.pow(Math.sin(t), 3);
-                let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-                let z = (Math.random() - 0.5) * 10; 
-                const scale = 25; 
-                const r = scale * (Math.random() * 0.2 + 0.8);
-                arr.push(x * r, y * r, z * scale * 4 * Math.random()); 
-            }
-            return arr;
-        }
-
-        function getMobiusLayout() {
-            const arr = [];
-            for (let i = 0; i < particleCount; i++) {
-                const u = Math.random() * Math.PI * 2;
-                const v = (Math.random() * 2) - 1;
-                const radius = 350;
-                const stripWidth = 150;
-                arr.push(
-                    (radius + v * stripWidth / 2 * Math.cos(u / 2)) * Math.cos(u),
-                    (radius + v * stripWidth / 2 * Math.cos(u / 2)) * Math.sin(u),
-                    v * stripWidth / 2 * Math.sin(u / 2)
-                );
-            }
-            return arr;
-        }
-
-        function getFractalLayout() {
-            const arr = [];
-            const size = 600;
-            const v = [{x: size, y: size, z: size}, {x: -size, y: -size, z: size}, {x: -size, y: size, z: -size}, {x: size, y: -size, z: -size}];
-            let currentP = {x: 0, y: 0, z: 0};
-            for (let i = 0; i < particleCount; i++) {
-                const targetV = v[Math.floor(Math.random() * 4)];
-                currentP.x = (currentP.x + targetV.x) / 2;
-                currentP.y = (currentP.y + targetV.y) / 2;
-                currentP.z = (currentP.z + targetV.z) / 2;
-                if (i > 20) arr.push(currentP.x, currentP.y, currentP.z);
-                else arr.push(0,0,0);
-            }
-            return arr;
-        }
-
-        function getPenroseLayout() {
-            const arr = [];
-            for (let i = 0; i < particleCount; i++) {
-                const u = (i / particleCount) * 20 * Math.PI;
-                const radius = i / particleCount * 500;
-                arr.push(radius * Math.cos(u), radius * Math.sin(u) - 200, i / particleCount * 600 - 300);
-            }
-            return arr;
-        }
-
-        // --- 颜色生成 ---
-        function getColors(type) {
+        function getColors() {
             const arr = [];
             const c = new THREE.Color();
             for (let i = 0; i < particleCount; i++) {
-                if (type === 'universe') c.setHSL(0.6 + Math.random() * 0.1, 0.8, 0.6);
-                else if (type === 'heart') c.setHSL(0.95 + Math.random() * 0.1, 0.9, 0.5);
-                else if (type === 'mobius') c.setHSL(0.5 + Math.random() * 0.2, 0.8, 0.5);
-                else if (type === 'fractal') c.setHSL(0.1 + Math.random() * 0.1, 1.0, 0.6);
-                else if (type === 'penrose') c.setHSL(0.75 + Math.random() * 0.2, 0.5, 0.8);
-                else c.setHSL(Math.random(), 0.8, 0.6); 
+                c.setHSL(Math.random(), 0.8, 0.6); 
                 arr.push(c.r, c.g, c.b);
             }
             return arr;
         }
 
-        // --- 变换逻辑 ---
-        function transformTo(shape) {
-            if (currentShape === shape) return;
-            document.getElementById('ai-input').value = "";
-            customShapeCode = null; 
-            
-            let nextPos;
-            switch (shape) {
-                case 'universe': nextPos = getUniverseLayout(); break;
-                case 'heart': nextPos = getHeartLayout(); break;
-                case 'mobius': nextPos = getMobiusLayout(); break;
-                case 'fractal': nextPos = getFractalLayout(); break;
-                case 'penrose': nextPos = getPenroseLayout(); break;
-                default: return;
+        function initLines() {
+            linesGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(maxLines * 2 * 3);
+            linesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            linesMesh = new THREE.LineSegments(linesGeometry, new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending }));
+            linesMesh.frustumCulled = false;
+            scene.add(linesMesh);
+        }
+
+        function generateConnections() {
+            connections = [];
+            const positions = currentPositions; // Use current positions for calculation
+            let attempts = 0;
+            // Simplified connection logic for morphing: just random pairs
+            // Ideally we'd update this when morphing finishes, but for now random is fine
+            while(connections.length < maxLines && attempts < 200000) {
+                attempts++;
+                const idxA = Math.floor(Math.random() * particleCount);
+                const idxB = Math.floor(Math.random() * particleCount);
+                if(idxA === idxB) continue;
+                // Don't check distance strictly here, just make connections. 
+                // Visual check is done in updateLines to hide long ones? 
+                // Or just allow long lines for "Web" effect.
+                connections.push([idxA, idxB]);
+            }
+        }
+
+        function updateLines() {
+            if (!linesMesh || !particles) return;
+            // Only draw lines if neural density > 0
+            if (neuralDensity <= 0) {
+                 linesGeometry.setDrawRange(0, 0);
+                 return;
             }
             
-            const logs = {
-                'universe': "Resetting entropy to cosmic background levels.",
-                'heart': "Bio-digital rhythm detected. Synchronizing...",
-                'mobius': "Topological loop initiated. Infinite regression.",
-                'fractal': "Recursive geometry loaded. Self-similarity: 100%.",
-                'penrose': "Non-euclidean geometry detected. Reality distortion active."
+            const targetCount = Math.floor(connections.length * (neuralDensity / 100));
+            linesGeometry.setDrawRange(0, targetCount * 2);
+            
+            const positions = linesGeometry.attributes.position.array;
+            // We must read from currentPositions (which are animating)
+            // particles.geometry.attributes.position.array IS currentPositions (ref)
+            
+            for (let i = 0; i < targetCount; i++) {
+                const [a, b] = connections[i];
+                // Optimization: Skip lines that are too long to reduce visual clutter?
+                // Let's keep them all for the "Neural" look
+                
+                positions[i*6] = currentPositions[a*3]; 
+                positions[i*6+1] = currentPositions[a*3+1]; 
+                positions[i*6+2] = currentPositions[a*3+2];
+                
+                positions[i*6+3] = currentPositions[b*3]; 
+                positions[i*6+4] = currentPositions[b*3+1]; 
+                positions[i*6+5] = currentPositions[b*3+2];
+            }
+            linesGeometry.attributes.position.needsUpdate = true;
+            linesMesh.rotation.copy(particles.rotation);
+        }
+
+        function setRenderStyle(name, el) {
+            if(document.activeElement) document.activeElement.blur(); 
+            currentStyle = name;
+            const styleMap = { 
+                'Universe':0, 'Ink':1, 'Oil':2, 'Forest':3, 'Sketch':4, 
+                'Cell':5, 'Ocean':6, 'Fire':7 
             };
-            logSystem(logs[shape]);
+            if(material) material.uniforms.uStyle.value = styleMap[name];
 
-            executeTransition(nextPos, shape, getColors(shape));
+            const container = document.getElementById('style-section-content');
+            if(container) {
+                const styleTags = container.querySelectorAll('.style-group .math-tag');
+                styleTags.forEach(t => t.classList.remove('selected'));
+                if (el) el.classList.add('selected');
+                else {
+                    const target = Array.from(styleTags).find(t => t.getAttribute('onclick').includes(`'${name}'`));
+                    if(target) target.classList.add('selected');
+                }
+            }
+
+            const body = document.body;
+            body.classList.remove('light-mode');
+            
+            if (name === 'Universe') {
+                renderer.setClearColor(0x000000); scene.fog.color.setHex(0x000000); scene.fog.density = 0.001;
+                material.blending = THREE.AdditiveBlending;
+                if(linesMesh) { linesMesh.material.color.setHex(0x00ffff); linesMesh.material.blending = THREE.AdditiveBlending; }
+                if(material) material.uniforms.uColorTint.value.setRGB(1, 1, 1);
+                logSystem("Environment: Deep Space");
+            } 
+            else if (name === 'Ink') {
+                body.classList.add('light-mode');
+                renderer.setClearColor(0xF5E9D3); scene.fog.color.setHex(0xF5E9D3); scene.fog.density = 0.0015;
+                material.blending = THREE.NormalBlending;
+                if(material) material.uniforms.uColorTint.value.setRGB(0.3, 0.4, 0.5); 
+                if(linesMesh) { linesMesh.material.color.setHex(0x554433); linesMesh.material.blending = THREE.NormalBlending; }
+                logSystem("Environment: Dan Qing Scroll");
+            }
+            else if (name === 'Oil') {
+                renderer.setClearColor(0x0B0E28); scene.fog.color.setHex(0x0B0E28); scene.fog.density = 0.001;
+                material.blending = THREE.NormalBlending;
+                if(material) material.uniforms.uColorTint.value.setRGB(1.0, 0.8, 0.2); 
+                if(linesMesh) { linesMesh.material.color.setHex(0xFFA500); linesMesh.material.blending = THREE.AdditiveBlending; }
+                logSystem("Environment: Van Gogh Night");
+            }
+            else if (name === 'Forest') {
+                renderer.setClearColor(0x051a05); scene.fog.color.setHex(0x051a05);
+                material.blending = THREE.AdditiveBlending;
+                if(material) material.uniforms.uColorTint.value.setRGB(0.4, 1.0, 0.5); 
+                if(linesMesh) { linesMesh.material.color.setHex(0x55ff55); linesMesh.material.blending = THREE.AdditiveBlending; }
+                logSystem("Environment: Deep Forest");
+            }
+            else if (name === 'Ocean') {
+                renderer.setClearColor(0x00051a); scene.fog.color.setHex(0x00051a);
+                material.blending = THREE.AdditiveBlending;
+                if(material) material.uniforms.uColorTint.value.setRGB(0.0, 0.6, 1.0); 
+                if(linesMesh) { linesMesh.material.color.setHex(0x0088ff); linesMesh.material.blending = THREE.AdditiveBlending; }
+                logSystem("Environment: Abyssal Zone");
+            }
+            else if (name === 'Fire') {
+                renderer.setClearColor(0x1a0500); scene.fog.color.setHex(0x1a0500);
+                material.blending = THREE.AdditiveBlending;
+                if(material) material.uniforms.uColorTint.value.setRGB(1.0, 0.4, 0.0); 
+                if(linesMesh) { linesMesh.material.color.setHex(0xff4400); linesMesh.material.blending = THREE.AdditiveBlending; }
+                logSystem("Environment: Magma Core");
+            }
+            else if (name === 'Cell') {
+                renderer.setClearColor(0x000000); scene.fog.color.setHex(0x000000);
+                material.blending = THREE.AdditiveBlending;
+                if(material) material.uniforms.uColorTint.value.setRGB(0.8, 0.0, 1.0); 
+                if(linesMesh) { linesMesh.material.color.setHex(0x00ffaa); linesMesh.material.blending = THREE.AdditiveBlending; }
+                logSystem("Environment: Microscopic Field");
+            }
+            else if (name === 'Sketch') {
+                body.classList.add('light-mode');
+                renderer.setClearColor(0xffffff); scene.fog.color.setHex(0xffffff);
+                material.blending = THREE.NormalBlending;
+                if(material) material.uniforms.uColorTint.value.setRGB(0.1, 0.1, 0.1); 
+                if(linesMesh) { linesMesh.material.color.setHex(0x333333); linesMesh.material.blending = THREE.NormalBlending; }
+                logSystem("Environment: Drafting Table");
+            }
         }
 
-        function transformToCustom(posArray, name) {
-            executeTransition(posArray, 'custom', getColors('ai'));
-            document.querySelectorAll('.sci-fi-btn').forEach(btn => btn.classList.remove('active'));
+        function setMaterialEffect(name, el) {
+            if(document.activeElement) document.activeElement.blur(); 
+            const effectMap = { 'Particle':0, 'Glass':1, 'Plant':2, 'Silk':3, 'Metal':4, 'Rock':5 };
+            currentEffect = effectMap[name];
+            if(material) material.uniforms.uEffect.value = currentEffect;
+
+            const container = document.getElementById('style-section-content');
+            if(container) {
+                const matTags = container.querySelectorAll('.material-group .math-tag');
+                matTags.forEach(t => t.classList.remove('selected'));
+
+                if(el) el.classList.add('selected');
+                else {
+                    const target = Array.from(matTags).find(t => t.getAttribute('onclick').includes(`'${name}'`));
+                    if(target) target.classList.add('selected');
+                }
+            }
+            logSystem(`Material Metamorphosis: ${name}`);
         }
 
-        function executeTransition(nextPos, shapeName, nextColors) {
-            currentShape = shapeName;
-            if(shapeName !== 'custom') {
-                document.querySelectorAll('.sci-fi-btn').forEach(btn => {
-                    btn.classList.remove('active');
-                    if(btn.innerText.toLowerCase().includes(shapeName)) btn.classList.add('active');
+        function setupFileAudio() {
+            const fileInput = document.getElementById('audio-file');
+            const playBtn = document.getElementById('audio-play-btn');
+            const volumeSlider = document.getElementById('audio-volume');
+            const gestureBtn = document.getElementById('file-gesture-btn');
+            let audioElement = new Audio();
+            audioElement.crossOrigin = "anonymous"; 
+            audioElement.loop = true;
+
+            // New: External Audio Detection Toggle
+            const extAudioToggle = document.getElementById('ext-audio-toggle');
+            if (extAudioToggle) {
+                extAudioToggle.addEventListener('click', function() {
+                    this.classList.toggle('active');
+                    toggleMic(); // Reuse mic logic as "External Detector"
                 });
             }
 
-            if (currentTween) currentTween.stop();
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // Disable Mic if active
+                if (isMicActive) toggleMic();
 
-            const startPositions = Float32Array.from(geometry.attributes.position.array);
-            const startColors = Float32Array.from(geometry.attributes.color.array);
+                const url = URL.createObjectURL(file);
+                audioElement.src = url;
+                audioElement.load();
+                if (!fileAudioCtx) initFileAudio(audioElement);
+                
+                audioElement.play().then(() => {
+                    isFilePlaying = true;
+                    playBtn.innerText = "PAUSE";
+                    logSystem("Audio stream engaged.");
+                }).catch(err => {
+                    console.error(err);
+                    logSystem("Playback blocked. Tap PLAY.");
+                });
+            });
 
-            transitionParams.val = 0;
+            playBtn.addEventListener('click', () => {
+                if (isMicActive) {
+                     // If Mic mode, Play button acts as stop
+                     toggleMic();
+                     return;
+                }
 
-            currentTween = new TWEEN.Tween(transitionParams)
-                .to({ val: 1 }, 2000)
-                .easing(TWEEN.Easing.Exponential.InOut)
-                .onUpdate(() => {
-                    const alpha = transitionParams.val;
-                    const posAttr = geometry.attributes.position;
-                    const colAttr = geometry.attributes.color;
-
-                    const count = Math.min(particleCount, posAttr.count);
-
-                    for (let i = 0; i < count; i++) {
-                        const idx = i * 3;
-                        posAttr.array[idx] = startPositions[idx] + (nextPos[idx] - startPositions[idx]) * alpha;
-                        posAttr.array[idx+1] = startPositions[idx+1] + (nextPos[idx+1] - startPositions[idx+1]) * alpha;
-                        posAttr.array[idx+2] = startPositions[idx+2] + (nextPos[idx+2] - startPositions[idx+2]) * alpha;
-
-                        colAttr.array[idx] = startColors[idx] + (nextColors[idx] - startColors[idx]) * alpha;
-                        colAttr.array[idx+1] = startColors[idx+1] + (nextColors[idx+1] - startColors[idx+1]) * alpha;
-                        colAttr.array[idx+2] = startColors[idx+2] + (nextColors[idx+2] - startColors[idx+2]) * alpha;
-                    }
-                    
-                    posAttr.needsUpdate = true;
-                    colAttr.needsUpdate = true;
-                })
-                .start();
+                if(!audioElement.src) { logSystem("No audio source loaded."); return; }
+                if(isFilePlaying) {
+                    audioElement.pause(); playBtn.innerText = "PLAY"; isFilePlaying = false;
+                } else {
+                    if(!fileAudioCtx) initFileAudio(audioElement);
+                    fileAudioCtx.resume().then(() => {
+                        audioElement.play(); playBtn.innerText = "PAUSE"; isFilePlaying = true;
+                    });
+                }
+            });
+            
+            volumeSlider.addEventListener('input', (e) => { audioElement.volume = e.target.value; });
+            gestureBtn.addEventListener('click', toggleGestureMode);
+            
+            document.getElementById('bass-sens-slider').addEventListener('input', (e) => { 
+                bassSensitivity = parseFloat(e.target.value); 
+                document.getElementById('bass-sens-val').innerText = bassSensitivity.toFixed(1); 
+            });
+            document.getElementById('treble-sens-slider').addEventListener('input', (e) => { 
+                trebleSensitivity = parseFloat(e.target.value); 
+                document.getElementById('treble-sens-val').innerText = trebleSensitivity.toFixed(1); 
+            });
         }
 
-        // --- 渲染 ---
+        function toggleMic() {
+            const toggleSwitch = document.getElementById('ext-audio-toggle');
+            const statusText = document.getElementById('ext-status');
+            const playBtn = document.getElementById('audio-play-btn');
+            
+            if (!isMicActive) {
+                // Activate Mic
+                if (!fileAudioCtx) fileAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                fileAudioCtx.resume().then(() => {
+                    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                    .then(stream => {
+                        micStream = stream;
+                        micSource = fileAudioCtx.createMediaStreamSource(stream);
+                        
+                        if (!fileGainNode) {
+                             // Initialize audio graph if empty
+                             fileGainNode = fileAudioCtx.createGain();
+                             fileDistortionNode = fileAudioCtx.createWaveShaper();
+                             fileFilterNode = fileAudioCtx.createBiquadFilter();
+                             fileAnalyser = fileAudioCtx.createAnalyser();
+                             
+                             fileDistortionNode.curve = makeDistortionCurve(0);
+                             fileDistortionNode.oversample = '4x';
+                             fileFilterNode.type = "lowpass";
+                             fileFilterNode.frequency.value = 20000;
+                             fileFilterNode.Q.value = 1;
+                             fileAnalyser.fftSize = 1024;
+                             fileAnalyser.smoothingTimeConstant = 0.85;
+                             
+                             fileFreqData = new Uint8Array(fileAnalyser.frequencyBinCount);
+                             fileTimeData = new Uint8Array(fileAnalyser.frequencyBinCount);
+                             
+                             fileGainNode.connect(fileDistortionNode);
+                             fileDistortionNode.connect(fileFilterNode);
+                             fileFilterNode.connect(fileAnalyser);
+                        }
+
+                        micSource.connect(fileGainNode);
+                        
+                        isMicActive = true;
+                        if(toggleSwitch) toggleSwitch.classList.add('active');
+                        if(statusText) statusText.innerText = "SCANNING...";
+                        playBtn.innerText = "STOP DETECT"; 
+                        logSystem("External Audio Probe: ONLINE");
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        logSystem("Audio Probe Error: Access Denied.");
+                        if(toggleSwitch) toggleSwitch.classList.remove('active');
+                    });
+                });
+            } else {
+                // Deactivate Mic
+                if (micStream) {
+                    micStream.getTracks().forEach(track => track.stop());
+                    micStream = null;
+                }
+                if (micSource) {
+                    micSource.disconnect();
+                    micSource = null;
+                }
+                isMicActive = false;
+                if(toggleSwitch) toggleSwitch.classList.remove('active');
+                if(statusText) {
+                    statusText.innerText = "OFFLINE";
+                    statusText.style.color = "#aaa";
+                    statusText.style.textShadow = "none";
+                }
+                playBtn.innerText = "PLAY";
+                logSystem("External Audio Probe: OFFLINE");
+            }
+        }
+
+        function initFileAudio(audioElement) {
+            fileAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            fileGainNode = fileAudioCtx.createGain(); 
+            fileDistortionNode = fileAudioCtx.createWaveShaper(); 
+            fileFilterNode = fileAudioCtx.createBiquadFilter();
+            fileAnalyser = fileAudioCtx.createAnalyser(); 
+            fileDistortionNode.curve = makeDistortionCurve(0);
+            fileDistortionNode.oversample = '4x';
+            fileFilterNode.type = "lowpass";
+            fileFilterNode.frequency.value = 20000;
+            fileFilterNode.Q.value = 1;
+            fileAnalyser.fftSize = 1024;
+            fileAnalyser.smoothingTimeConstant = 0.85;
+            fileFreqData = new Uint8Array(fileAnalyser.frequencyBinCount);
+            fileTimeData = new Uint8Array(fileAnalyser.frequencyBinCount);
+            fileSource = fileAudioCtx.createMediaElementSource(audioElement);
+            fileSource.connect(fileGainNode);
+            fileGainNode.connect(fileDistortionNode);
+            fileDistortionNode.connect(fileFilterNode);
+            fileFilterNode.connect(fileAnalyser);
+            fileAnalyser.connect(fileAudioCtx.destination);
+        }
+
+        function toggleGestureMode() {
+            isGestureActive = !isGestureActive;
+            const btn = document.getElementById('file-gesture-btn');
+            const hint = document.getElementById('gesture-hint');
+            if (isGestureActive) {
+                btn.classList.add('active');
+                hint.style.opacity = 1;
+                clearTimeout(hintTimeout);
+                hintTimeout = setTimeout(() => { hint.style.opacity = 0; }, 3000);
+                logSystem("XY Gesture Modulation: ENGAGED");
+            } else {
+                btn.classList.remove('active');
+                hint.style.opacity = 0;
+                clearTimeout(hintTimeout);
+                if(fileFilterNode) { fileFilterNode.frequency.value = 20000; fileFilterNode.Q.value = 1; }
+                if(fileDistortionNode) fileDistortionNode.curve = makeDistortionCurve(0);
+                logSystem("XY Gesture Modulation: DISENGAGED");
+            }
+        }
+
+        function makeDistortionCurve(amount) {
+            const k = typeof amount === 'number' ? amount : 50;
+            const n_samples = 44100;
+            const curve = new Float32Array(n_samples);
+            const deg = Math.PI / 180;
+            for (let i = 0; i < n_samples; ++i) {
+                const x = i * 2 / n_samples - 1;
+                curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+            }
+            return curve;
+        }
+
+        function drawVisualizer(canvasCtx, freqData, timeData) {
+            const width = canvasCtx.canvas.width; const height = canvasCtx.canvas.height;
+            canvasCtx.fillStyle = 'rgba(0, 20, 40, 1)'; canvasCtx.fillRect(0, 0, width, height);
+            const barWidth = (width / freqData.length) * 2.5; let x = 0;
+            for(let i = 0; i < freqData.length; i++) {
+                const barHeight = freqData[i] / 4; const r = barHeight + (50 * (i/freqData.length)); const g = 200 * (i/freqData.length); const b = 255;
+                canvasCtx.fillStyle = `rgba(${r},${g},${b}, 0.5)`; canvasCtx.fillRect(x, height - barHeight, barWidth, barHeight); x += barWidth + 1;
+            }
+            if (timeData) {
+                canvasCtx.lineWidth = 2; canvasCtx.strokeStyle = '#0ff'; canvasCtx.beginPath();
+                const sliceWidth = width * 1.0 / timeData.length; let startX = 0;
+                for(let i = 0; i < timeData.length; i++) {
+                    const v = timeData[i] / 128.0; const y = v * height / 2;
+                    if(i === 0) canvasCtx.moveTo(startX, y); else canvasCtx.lineTo(startX, y); startX += sliceWidth;
+                }
+                canvasCtx.lineTo(width, height / 2); canvasCtx.stroke();
+            }
+        }
+
+        // --- Main Loop ---
         function animate() {
             requestAnimationFrame(animate);
-            
             const time = performance.now();
             frames++;
             if (time >= lastTime + 1000) {
                 fpsCounter.innerText = Math.round((frames * 1000) / (time - lastTime));
-                lastTime = time;
-                frames = 0;
+                lastTime = time; frames = 0;
+            }
+            TWEEN.update();
+
+            // --- MORPHING LOGIC (CPU) ---
+            if (isMorphing) {
+                const speed = morphSpeed; 
+                for(let i=0; i<particleCount * 3; i++) {
+                    const diff = targetPositions[i] - currentPositions[i];
+                    if (Math.abs(diff) > 0.1) {
+                        currentPositions[i] += diff * speed;
+                    } else {
+                        currentPositions[i] = targetPositions[i]; // Snap
+                    }
+                }
+                geometry.attributes.position.needsUpdate = true;
+            }
+            
+            // Always update lines if visible, they need to follow particles
+            updateLines();
+
+            let bassFactor = 0;
+            let trebleFactor = 0;
+            let waveFactor = 0;
+            
+            // Check if either File Playback OR Live Mic is active
+            if ((isFilePlaying || isMicActive) && fileAnalyser && material) {
+                fileAnalyser.getByteFrequencyData(fileFreqData);
+                fileAnalyser.getByteTimeDomainData(fileTimeData);
+                drawVisualizer(fileVizCtx, fileFreqData, fileTimeData);
+
+                // Mic Detection Status Logic
+                if (isMicActive) {
+                    let sum = 0;
+                    for(let i=0; i<fileFreqData.length; i++) sum += fileFreqData[i];
+                    const avg = sum / fileFreqData.length;
+                    const statusEl = document.getElementById('ext-status');
+                    if (statusEl) {
+                        if (avg > 10) { 
+                             statusEl.innerText = "SIGNAL LOCKED";
+                             statusEl.style.color = "#0f0";
+                             statusEl.style.textShadow = "0 0 5px #0f0";
+                        } else {
+                             statusEl.innerText = "SCANNING...";
+                             statusEl.style.color = "#ff0";
+                             statusEl.style.textShadow = "none";
+                        }
+                    }
+                }
+
+                let bassSum = 0; const bassLimit = Math.floor(fileFreqData.length * 0.1);
+                let trebleSum = 0; const trebleStart = Math.floor(fileFreqData.length * 0.6);
+
+                for(let i = 0; i < fileFreqData.length; i++) {
+                    if (i < bassLimit) bassSum += fileFreqData[i];
+                    else if (i > trebleStart) trebleSum += fileFreqData[i];
+                }
+                let timeSum = 0;
+                for(let i=0; i < fileTimeData.length; i++) timeSum += Math.abs(fileTimeData[i] - 128);
+
+                bassFactor = (bassSum / bassLimit) / 255;
+                trebleFactor = (trebleSum / (fileFreqData.length - trebleStart)) / 255;
+                waveFactor = (timeSum / fileTimeData.length) / 64;
+
+                if (isGestureActive && isPinching) waveFactor += 0.5;
+
+                bassFactor *= bassSensitivity;
+                trebleFactor *= trebleSensitivity;
+
+                material.uniforms.uBass.value = THREE.MathUtils.lerp(material.uniforms.uBass.value, bassFactor, 0.1);
+                material.uniforms.uTreble.value = THREE.MathUtils.lerp(material.uniforms.uTreble.value, trebleFactor, 0.1);
+                material.uniforms.uWave.value = THREE.MathUtils.lerp(material.uniforms.uWave.value, waveFactor > 0.1 ? waveFactor : 0, 0.1);
+                
+                let targetModX = 0.5;
+                let targetModY = 0.0;
+                if (isGestureActive) { targetModX = normMouseX; targetModY = 1.0 - normMouseY; }
+                material.uniforms.uModX.value = THREE.MathUtils.lerp(material.uniforms.uModX.value, targetModX, 0.1);
+                material.uniforms.uModY.value = THREE.MathUtils.lerp(material.uniforms.uModY.value, targetModY, 0.1);
+
+            } else if (pulseIntensity > 0 && material) {
+                const pulse = Math.sin(time * 0.003 * (1 + pulseIntensity)) * 0.5 + 0.5; 
+                material.uniforms.uBass.value = pulse * pulseIntensity * 0.5;
+                material.uniforms.uTreble.value = 0.0;
+                material.uniforms.uWave.value = 0.0;
+            }
+            
+            if (material) {
+                material.uniforms.uTime.value = time * 0.001;
+                material.uniforms.uMousePos.value.copy(worldMouse);
             }
 
-            TWEEN.update();
-            
-            // 更新连线
-            if (neuralDensity > 0) {
-                updateLines();
-            } else if (linesMesh && linesMesh.visible) {
-                // 如果密度为0但网格还可见，隐藏它
-                const positions = linesGeometry.attributes.position.array;
-                for (let i = 0; i < positions.length; i++) positions[i] = 0;
-                linesGeometry.attributes.position.needsUpdate = true;
+            // Sync Cursor
+            if (cursorMaterial) {
+                cursorMaterial.uniforms.uBass.value = material.uniforms.uBass.value;
+                cursorMaterial.uniforms.uTreble.value = material.uniforms.uTreble.value;
+                cursorMaterial.uniforms.uWave.value = material.uniforms.uWave.value;
+                cursorMaterial.uniforms.uModX.value = material.uniforms.uModX.value;
+                cursorMaterial.uniforms.uModY.value = material.uniforms.uModY.value;
+                cursorMaterial.uniforms.uTime.value = material.uniforms.uTime.value;
+                cursorMaterial.uniforms.uPlayColor.value = material.uniforms.uPlayColor.value;
+                cursorMaterial.uniforms.uEffect.value = material.uniforms.uEffect.value;
+                cursorMaterial.uniforms.uStyle.value = material.uniforms.uStyle.value;
+                cursorMaterial.uniforms.uColorTint.value.copy(material.uniforms.uColorTint.value);
+                cursorMaterial.uniforms.size.value = material.uniforms.size.value * 1.5; 
+                cursorMaterial.blending = material.blending;
             }
 
             const rotationSpeed = 0.001 * simSpeed;
-            let chaosMultiplier = (1.0 - stability) * 5;
 
-            particles.rotation.y += rotationSpeed * (1 + chaosMultiplier * Math.random());
-            particles.rotation.z += rotationSpeed * 0.2 * (1 - chaosMultiplier * Math.random());
-
-            if (stability < 0.95) {
-                const shakeIntensity = (1.0 - stability) * 10;
-                camera.position.x += (Math.random() - 0.5) * shakeIntensity;
-                camera.position.y += (Math.random() - 0.5) * shakeIntensity;
+            if (autoRotate) {
+                const extraSpeed = isFilePlaying ? 0.005 : 0;
+                particles.rotation.y += (0.002 + extraSpeed);
+                if(linesMesh) linesMesh.rotation.y += (0.002 + extraSpeed);
             }
+
+            particles.rotation.y += rotationSpeed;
+            particles.rotation.z += rotationSpeed * 0.2;
+
+            updateCursor();
 
             camera.position.x += (mouseX - camera.position.x) * 0.05 * simSpeed;
             camera.position.y += (-mouseY - camera.position.y) * 0.05 * simSpeed;
             camera.lookAt(scene.position);
 
-            renderer.autoClearColor = false;
+            renderer.autoClear = true; 
             renderer.clear(); 
             renderer.render(scene, camera);
         }
 
-        function onDocumentMouseMove(event) {
-            mouseX = (event.clientX - windowHalfX) * 1;
-            mouseY = (event.clientY - windowHalfY) * 1;
+        function setupUIControls() {
+            document.getElementById('particle-slider').addEventListener('change', (e) => { initParticles(parseInt(e.target.value)); generateConnections(); });
+            document.getElementById('particle-slider').addEventListener('input', (e) => document.getElementById('particle-val').innerText = parseInt(e.target.value).toLocaleString());
+            document.getElementById('speed-slider').addEventListener('input', (e) => { simSpeed = parseFloat(e.target.value); document.getElementById('speed-val').innerText = simSpeed.toFixed(1)+"x"; });
+            document.getElementById('size-slider').addEventListener('input', (e) => { particleSize = parseFloat(e.target.value); document.getElementById('size-val').innerText = particleSize.toFixed(1); if(material) material.uniforms.size.value = particleSize; });
+            
+            // Morph Speed Slider
+            document.getElementById('morph-slider').addEventListener('input', (e) => { morphSpeed = parseFloat(e.target.value); document.getElementById('morph-val').innerText = morphSpeed.toFixed(2); });
+
+            const updateColor = () => {
+                colorR = document.getElementById('slider-r').value/255; colorG = document.getElementById('slider-g').value/255; colorB = document.getElementById('slider-b').value/255;
+                document.getElementById('rgb-val').innerText = `${parseInt(colorR*255)}, ${parseInt(colorG*255)}, ${parseInt(colorB*255)}`;
+                if(material) material.uniforms.uColorTint.value.setRGB(colorR, colorG, colorB);
+                if(linesMesh) linesMesh.material.color.setRGB(colorR, colorG * 1.2, colorB * 1.5);
+            };
+            document.getElementById('slider-r').addEventListener('input', updateColor);
+            document.getElementById('slider-g').addEventListener('input', updateColor);
+            document.getElementById('slider-b').addEventListener('input', updateColor);
+
+            document.getElementById('neural-slider').addEventListener('input', (e) => { neuralDensity = parseInt(e.target.value); document.getElementById('neural-val').innerText = neuralDensity+"%"; });
+            document.getElementById('btn-refresh-lines').addEventListener('click', () => { generateConnections(); });
+            
+            document.getElementById('toggle-rotate').addEventListener('click', function() { autoRotate = !autoRotate; this.classList.toggle('active'); });
+            document.getElementById('pulse-slider').addEventListener('input', (e) => { pulseIntensity = parseFloat(e.target.value); document.getElementById('pulse-val').innerText = (pulseIntensity*100).toFixed(0)+"%"; });
+            
+            document.getElementById('toggle-auto-color').addEventListener('click', function() { 
+                autoColorCycle = !autoColorCycle; 
+                this.classList.toggle('active');
+                if(material) material.uniforms.uPlayColor.value = autoColorCycle ? 1.0 : 0.0;
+                if(autoColorCycle) logSystem("Dynamic Color Cycle: ON");
+                else logSystem("Dynamic Color Cycle: OFF (RGB Restored)");
+            });
         }
 
-        function onWindowResize() {
-            windowHalfX = window.innerWidth / 2;
-            windowHalfY = window.innerHeight / 2;
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        function onDocumentMouseMove(event) { 
+            mouseX = (event.clientX - windowHalfX) * 1; 
+            mouseY = (event.clientY - windowHalfY) * 1; 
+            
+            mouseVector.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+            mouseVector.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+            const isHoveringUI = event.target.closest('#hologram-ui');
+            if (isHoveringUI) {
+                document.body.style.cursor = 'default';
+            } else {
+                document.body.style.cursor = 'none';
+                if (event.buttons === 0 && document.activeElement && document.activeElement !== document.body) {
+                    document.activeElement.blur();
+                }
+            }
+
+            if (isGestureActive && fileFilterNode) {
+                normMouseX = event.clientX / window.innerWidth; 
+                normMouseY = event.clientY / window.innerHeight; 
+                
+                document.getElementById('mod-cutoff-bar').style.width = (normMouseX * 100) + "%";
+                document.getElementById('mod-res-bar').style.width = ((1-normMouseY) * 100) + "%";
+
+                const minFreq = 100; const maxFreq = 10000;
+                const freq = minFreq + (maxFreq - minFreq) * normMouseX;
+                fileFilterNode.frequency.setTargetAtTime(freq, fileAudioCtx.currentTime, 0.1);
+                const maxQ = 20; const q = maxQ * (1 - normMouseY); 
+                fileFilterNode.Q.setTargetAtTime(q, fileAudioCtx.currentTime, 0.1);
+            }
         }
 
-        // generateSprite 已被 Shader 替代，不再需要
+        function onDocumentMouseDown(event) {
+            if (event.target.closest('#hologram-ui') || event.target.closest('#controls')) return; 
+            
+            // isMouseDown removed (force field disabled)
+
+            if (isGestureActive && fileDistortionNode) {
+                isPinching = true;
+                fileDistortionNode.curve = makeDistortionCurve(100); 
+                document.body.style.cursor = 'grabbing';
+            }
+        }
+
+        function onDocumentMouseUp(event) {
+            // isMouseDown removed
+
+            if (isGestureActive && fileDistortionNode) {
+                isPinching = false;
+                fileDistortionNode.curve = makeDistortionCurve(0);
+                document.body.style.cursor = 'default';
+            }
+        }
+
+        function onWindowResize() { windowHalfX = window.innerWidth/2; windowHalfY = window.innerHeight/2; camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+        function logSystem(msg) { const log = document.getElementById('ai-log'); log.innerHTML += `\n[SYS] ${msg}`; log.scrollTop = log.scrollHeight; }
         
-        window.transformTo = transformTo;
-        window.triggerAI = triggerAI;
-        window.usePreset = usePreset;
+        function selectShape(shapeName) {
+            if(document.activeElement) document.activeElement.blur(); 
+            
+            const container = document.getElementById('shape-section-content');
+            if(container) {
+                const shapeTags = container.querySelectorAll('.math-tag');
+                shapeTags.forEach(t => t.classList.remove('selected'));
+                const target = Array.from(shapeTags).find(t => t.getAttribute('onclick').includes(`'${shapeName}'`));
+                if(target) target.classList.add('selected');
+            }
+
+            logSystem(`Initiating Morph to: ${shapeName}`);
+            currentShape = shapeName;
+            updateParticleGeometry(shapeName);
+        }
+
+        window.selectShape = selectShape;
+        window.setRenderStyle = setRenderStyle;
+        window.setMaterialEffect = setMaterialEffect;
     </script>
 </body>
 </html>
